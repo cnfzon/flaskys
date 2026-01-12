@@ -3,7 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '@/lib/firebase/config';
+import { auth, db } from '@/lib/firebase/config'; 
+import { 
+  writeBatch, 
+  doc, 
+  collection, 
+  query, 
+  where, 
+  getDocs,
+  serverTimestamp 
+} from 'firebase/firestore';
+
 import { getUserData } from '@/lib/firebase/auth';
 import { getStudentsByCourse, updateStudentTotalPoints } from '@/lib/firebase/students';
 import { getCoursesByTeacher } from '@/lib/firebase/courses';
@@ -66,30 +76,56 @@ export default function TeacherDashboard() {
     return () => unsubscribe();
   }, [router]);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // app/dashboard/teacher/page.tsx
+
+//import { parseCSV, processStudentData } from '@/lib/utils/csvParser';
+//import { writeBatch, doc, collection, query, where, getDocs } from 'firebase/firestore';
+
+    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    
+    if (!file || !selectedCourse) {
+      alert("請先選擇一個課程");
+      return;
+    }
 
+    setLoading(true); 
     try {
-      const rows = await parseCSV(file);
-      const studentMap = processStudentData(rows);
+      const text = await file.text();
+      const rawRows = parseCSV(text);
+      const studentDataMap = processStudentData(rawRows);
 
-      // Update students in Firestore
-      for (const [studentId, data] of studentMap.entries()) {
-        const student = students.find((s) => s.studentId === studentId);
-        if (student) {
-          await updateStudentTotalPoints(student.id, data.totalPoints);
-        }
+      const batch = writeBatch(db);
+      const enrollmentsRef = collection(db, 'enrollments');
+
+      for (const [studentId, data] of studentDataMap.entries()) {
+        const q = query(
+          enrollmentsRef, 
+          where('courseId', '==', selectedCourse), 
+          where('studentId', '==', studentId)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((docSnap) => {
+          batch.update(docSnap.ref, {
+            totalPoints: data.totalPoints,
+            weeklyHistory: data.history,
+            lastUpdated: serverTimestamp()
+          });
+        });
       }
 
-      // Refresh students list
-      if (selectedCourse) {
-        const updatedStudents = await getStudentsByCourse(selectedCourse);
-        setStudents(updatedStudents);
-      }
+      await batch.commit();
+      alert(`成功匯入 ${studentDataMap.size} 筆數據！`);
+      
+      const updatedStudents = await getStudentsByCourse(selectedCourse);
+      setStudents(updatedStudents);
     } catch (error) {
-      console.error('Error uploading CSV:', error);
-      alert('Error uploading CSV file');
+      console.error("匯入失敗:", error);
+      alert('匯入失敗，請檢查檔案格式');
+    } finally {
+      setLoading(false);
+      event.target.value = '';
     }
   };
 
@@ -151,7 +187,7 @@ export default function TeacherDashboard() {
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-[#121517] min-h-screen flex flex-col overflow-x-hidden">
       <Header title="EduTrack Admin" userRole="teacher" />
-      <main className="flex-1 flex flex-col p-6 gap-6 max-w-[1440px] mx-auto w-full">
+      <main className="flex-1 flex flex-col p-6 gap-6 max-w-360 mx-auto w-full">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-[#121517] dark:text-white tracking-tight text-[28px] font-bold leading-tight">

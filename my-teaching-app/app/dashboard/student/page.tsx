@@ -42,7 +42,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [showJoinModal, setShowJoinModal] = useState(false); // 控制加選彈窗
 
-  const maxPoints = 1000;
+  const maxPoints = 100;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {

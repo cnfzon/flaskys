@@ -1,188 +1,223 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '@/lib/firebase/config'; 
+import { auth, db } from '@/lib/firebase/config';
 import { 
   writeBatch, 
-  doc, 
   collection, 
   query, 
   where, 
   getDocs,
-  serverTimestamp 
+  serverTimestamp,
+  doc,
+  updateDoc
 } from 'firebase/firestore';
 
-import { getUserData } from '@/lib/firebase/auth';
-import { getStudentsByCourse, updateStudentTotalPoints } from '@/lib/firebase/students';
+import { getStudentsByCourse } from '@/lib/firebase/students';
 import { getCoursesByTeacher } from '@/lib/firebase/courses';
 import { getGradeDistribution } from '@/lib/utils/calculations';
-import { parseCSV, processStudentData } from '@/lib/utils/csvParser';
+import { parseCSV } from '@/lib/utils/csvParser';
 import Header from '@/components/Header';
+
+// 修正：補齊所有缺失的圖示匯入
 import {
-  School,
   Upload,
-  Bell,
-  LogOut,
   Search,
-  Filter,
-  MoreHorizontal,
-  AlertTriangle,
-  Users,
   TrendingUp,
+  MoreHorizontal,
+  ChevronDown,
+  Users,
+  AlertTriangle,
 } from 'lucide-react';
+
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Student, Course } from '@/types';
 
+type SortOption = 'totalPoints' | 'studentId' | 'points' | 'weight';
+
 export default function TeacherDashboard() {
   const router = useRouter();
+  
   const [students, setStudents] = useState<Student[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<string>('');
+  const [selectedCourse, setSelectedCourse] = useState<string>(''); 
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'points' | 'weight'>('weight');
+  const [sortBy, setSortBy] = useState<SortOption>('totalPoints');
   const [editingStudent, setEditingStudent] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
+      if (user) {
+        try {
+          const teacherCourses = await getCoursesByTeacher(user.uid);
+          setCourses(teacherCourses);
+          if (teacherCourses.length > 0) {
+            setSelectedCourse(teacherCourses[0].id);
+          }
+        } catch (error) {
+          console.error("Error fetching courses:", error);
+        } finally {
+          setLoading(false);
+        }
+      } else {
         router.push('/login');
-        return;
       }
-
-      const userData = await getUserData(user.uid);
-      if (!userData || userData.role !== 'teacher') {
-        router.push('/login');
-        return;
-      }
-
-      // Fetch courses
-      const teacherCourses = await getCoursesByTeacher(user.uid);
-      setCourses(teacherCourses);
-
-      if (teacherCourses.length > 0) {
-        const courseId = teacherCourses[0].id;
-        setSelectedCourse(courseId);
-        const courseStudents = await getStudentsByCourse(courseId);
-        setStudents(courseStudents);
-      }
-
-      setLoading(false);
     });
-
     return () => unsubscribe();
   }, [router]);
 
-  // app/dashboard/teacher/page.tsx
+  useEffect(() => {
+    const fetchStudents = async () => {
+      if (!selectedCourse) return;
+      setLoading(true);
+      try {
+        const studentList = await getStudentsByCourse(selectedCourse);
+        setStudents(studentList);
+      } catch (error) {
+        console.error("Error fetching students:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStudents();
+  }, [selectedCourse]);
 
-//import { parseCSV, processStudentData } from '@/lib/utils/csvParser';
-//import { writeBatch, doc, collection, query, where, getDocs } from 'firebase/firestore';
-
-    const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    
     if (!file || !selectedCourse) {
-      alert("請先選擇一個課程");
+      alert("請先選擇課程再上傳 CSV");
       return;
     }
 
-    setLoading(true); 
+    setLoading(true);
     try {
       const text = await file.text();
       const rawRows = parseCSV(text);
-      const studentDataMap = processStudentData(rawRows);
+      if (rawRows.length < 2) throw new Error("CSV 檔案內容不足");
 
+      const headers = rawRows[0];
       const batch = writeBatch(db);
       const enrollmentsRef = collection(db, 'enrollments');
 
-      for (const [studentId, data] of studentDataMap.entries()) {
-        const q = query(
-          enrollmentsRef, 
-          where('courseId', '==', selectedCourse), 
-          where('studentId', '==', studentId)
-        );
-        
+      // 1. 遍歷 CSV 每一列學生資料
+      for (let i = 1; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        const studentId = row[0]?.trim();
+        if (!studentId) continue;
+
+        let total = 0;
+        const history: { date: string; points: number }[] = [];
+
+        // 2. 遍歷標題，精確加總 1-18 週與 Final
+        headers.forEach((header: string, index: number) => {
+          const val = parseFloat(row[index]) || 0;
+          const cleanHeader = header.trim();
+          
+          // 檢查是否為數字標題 (1-18)
+          const weekNum = parseInt(cleanHeader);
+          if (!isNaN(weekNum) && weekNum >= 1 && weekNum <= 18) {
+            history.push({ date: `Week ${cleanHeader}`, points: val });
+            total += val;
+          }
+
+          // 檢查是否為期末考標題 (Final)
+          if (cleanHeader.toLowerCase() === 'final' || cleanHeader.includes('期末')) {
+            total += val;
+          }
+        });
+
+        // 3. 執行 Upsert (存在更新，不存在新增)
+        const q = query(enrollmentsRef, where('courseId', '==', selectedCourse), where('studentId', '==', studentId));
         const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((docSnap) => {
-          batch.update(docSnap.ref, {
-            totalPoints: data.totalPoints,
-            weeklyHistory: data.history,
+
+        if (querySnapshot.empty) {
+          const newDocRef = doc(enrollmentsRef);
+          batch.set(newDocRef, {
+            courseId: selectedCourse,
+            studentId,
+            totalPoints: Number(total.toFixed(1)),
+            weeklyHistory: history,
             lastUpdated: serverTimestamp()
           });
-        });
+        } else {
+          querySnapshot.forEach((docSnap) => {
+            batch.update(docSnap.ref, {
+              totalPoints: Number(total.toFixed(1)),
+              weeklyHistory: history,
+              lastUpdated: serverTimestamp()
+            });
+          });
+        }
       }
 
-      await batch.commit();
-      alert(`成功匯入 ${studentDataMap.size} 筆數據！`);
+      // 4. 關鍵：等待 Firebase 完成寫入
+      await batch.commit(); 
       
+      // 5. 成功後才跳出通知
+      alert(`匯入成功！已完成 ${rawRows.length - 1} 筆資料加總 (含 18 週及期末考)。`);
+      
+      // 重新獲取資料更新介面
       const updatedStudents = await getStudentsByCourse(selectedCourse);
       setStudents(updatedStudents);
-    } catch (error) {
-      console.error("匯入失敗:", error);
-      alert('匯入失敗，請檢查檔案格式');
+
+    } catch (error: any) {
+      // 攔截 Firebase 或程式碼錯誤
+      console.error("匯入程序出錯:", error);
+      
+      if (error.code === 'permission-denied') {
+        alert("匯入失敗：Firebase 權限不足。請確認 Rules 已發佈且您的角色為 teacher。");
+      } else {
+        alert(`匯入失敗：${error.message || "未知錯誤"}`);
+      }
     } finally {
       setLoading(false);
-      event.target.value = '';
+      event.target.value = ''; // 清除 input 讓下次選同個檔案也能觸發
     }
   };
 
-  const handleEditScore = async (studentId: string) => {
+  const handleEditScore = async (studentId: string, currentValue: number) => {
     if (editingStudent === studentId) {
-      // Save
-      await updateStudentTotalPoints(studentId, editValue);
-      setEditingStudent(null);
-      setEditValue(0);
-
-      // Refresh students list
-      if (selectedCourse) {
-        const updatedStudents = await getStudentsByCourse(selectedCourse);
-        setStudents(updatedStudents);
+      try {
+        setLoading(true);
+        // 此處 studentId 為 enrollment 文件的 ID
+        const studentRef = doc(db, 'enrollments', studentId);
+        await updateDoc(studentRef, { totalPoints: editValue, lastUpdated: serverTimestamp() });
+        setStudents(prev => prev.map(s => s.id === studentId ? { ...s, totalPoints: editValue } : s));
+        setEditingStudent(null);
+      } catch (error) {
+        alert("更新失敗");
+      } finally {
+        setLoading(false);
       }
     } else {
-      // Start editing
-      const student = students.find((s) => s.id === studentId);
-      if (student) {
-        setEditingStudent(studentId);
-        setEditValue(student.totalPoints);
-      }
+      setEditingStudent(studentId);
+      setEditValue(currentValue);
     }
   };
 
-  const handleCourseChange = async (courseId: string) => {
-    setSelectedCourse(courseId);
-    const courseStudents = await getStudentsByCourse(courseId);
-    setStudents(courseStudents);
-  };
+  const classAverage = useMemo(() => {
+    if (students.length === 0) return 0;
+    return students.reduce((acc, s) => acc + (s.totalPoints || 0), 0) / students.length;
+  }, [students]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
+  // 修正：補齊缺失的 atRiskStudents 定義 (總分低於 60 分者)
+  const atRiskStudents = useMemo(() => {
+    return students.filter(s => (s.totalPoints || 0) < 60).length;
+  }, [students]);
 
-  const filteredStudents = students.filter((s) =>
-    s.studentId.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const sortedStudents = useMemo(() => {
+    const filtered = students.filter(s => s.studentId?.toLowerCase().includes(searchTerm.toLowerCase()));
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'totalPoints' || sortBy === 'points') return (b.totalPoints || 0) - (a.totalPoints || 0);
+      return (a.studentId || '').localeCompare(b.studentId || '');
+    });
+  }, [students, searchTerm, sortBy]);
 
-  const sortedStudents = [...filteredStudents].sort((a, b) => {
-    if (sortBy === 'points') {
-      return b.totalPoints - a.totalPoints;
-    } else {
-      return b.finalExamWeight - a.finalExamWeight;
-    }
-  });
-
-  const gradeDistribution = getGradeDistribution(students);
-  const classAverage =
-    students.length > 0
-      ? students.reduce((sum, s) => sum + s.totalPoints, 0) / students.length
-      : 0;
-  const atRiskStudents = students.filter((s) => s.finalExamWeight > 50).length;
+  const gradeDistribution = useMemo(() => getGradeDistribution(students), [students]);
 
   return (
     <div className="bg-background-light dark:bg-background-dark font-display text-[#121517] min-h-screen flex flex-col overflow-x-hidden">
@@ -198,15 +233,29 @@ export default function TeacherDashboard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <label className="flex items-center justify-center rounded-lg h-10 bg-primary hover:bg-[#5b95c6] text-white gap-2 px-4 text-sm font-bold shadow-md transition-all active:scale-95 cursor-pointer">
+            <div className="relative min-w-40">
+              <select
+                value={selectedCourse}
+                onChange={(e) => setSelectedCourse(e.target.value)}
+                className="w-full h-10 pl-3 pr-10 rounded-lg border border-[#dde1e4] dark:border-[#2a343e] bg-white dark:bg-[#1a222c] text-sm font-bold text-[#121517] dark:text-white appearance-none cursor-pointer outline-none focus:ring-2 focus:ring-primary shadow-sm"
+              >
+                {courses.length > 0 ? (
+                  courses.map((course) => (
+                    <option key={course.id} value={course.id} className="text-black dark:text-white">
+                      {course.name || "未命名課程"}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>無可用課程</option>
+                )}
+              </select>
+              <ChevronDown className="w-4 h-4 absolute right-3 top-3 pointer-events-none text-[#677683]" />
+            </div>
+
+            <label className="flex items-center justify-center rounded-lg h-10 bg-primary hover:bg-[#5b95c6] text-white gap-2 px-4 text-sm font-bold shadow-md cursor-pointer transition-all active:scale-95">
               <Upload className="w-5 h-5" />
               <span>Upload CSV</span>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+              <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
         </div>
@@ -304,7 +353,8 @@ export default function TeacherDashboard() {
               <select
                 className="h-8 px-3 rounded border border-[#dde1e4] dark:border-[#35414d] bg-white dark:bg-[#2a343e] text-sm font-medium text-[#121517] dark:text-white cursor-pointer outline-none focus:ring-2 focus:ring-primary"
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as 'points' | 'weight')}
+                //onChange={(e) => setSortBy(e.target.value as 'points' | 'weight')}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
               >
                 <option value="weight">Sort by Final Exam Weight</option>
                 <option value="points">Sort by Points</option>
@@ -372,7 +422,7 @@ export default function TeacherDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
-                          onClick={() => handleEditScore(student.id)}
+                          onClick={() => handleEditScore(student.id, student.totalPoints || 0)}
                           className="text-[#677683] hover:text-primary transition-colors p-1"
                         >
                           {editingStudent === student.id ? (

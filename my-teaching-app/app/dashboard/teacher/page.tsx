@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
+import Papa from 'papaparse';
 import { 
   writeBatch, 
   collection, 
@@ -86,96 +87,94 @@ export default function TeacherDashboard() {
     fetchStudents();
   }, [selectedCourse]);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !selectedCourse) {
-      alert("請先選擇課程再上傳 CSV");
+    
+    // 強制檢查：如果沒選課程，直接報錯不執行
+    if (!selectedCourse || selectedCourse === "") {
+      alert("錯誤：請先選擇課程（如：電路學）再上傳檔案。");
       return;
     }
+
+    if (!file) return;
 
     setLoading(true);
     try {
       const text = await file.text();
-      const rawRows = parseCSV(text);
-      if (rawRows.length < 2) throw new Error("CSV 檔案內容不足");
+      // = parseCSV(text);
+      //if (rawRows.length < 2) throw new Error("CSV 檔案內容不足");
+      const results = Papa.parse(text, { skipEmptyLines: true });
+      const rawRows = results.data as string[][];
 
-      const headers = rawRows[0];
+      const headers = rawRows[0].map((h: string) => h.trim());
+      //const headers = rawRows[0].split(',').map((h: string) => h.trim());
       const batch = writeBatch(db);
       const enrollmentsRef = collection(db, 'enrollments');
 
-      // 1. 遍歷 CSV 每一列學生資料
+      // 針對您的 CSV 欄位名稱進行精確匹配
+      const metadata = ['No.', 'Class', 'ID', 'Total learning-progress points', 'Weight of final exam (%)', 'Grade', 'Course Feedback'];
+
+      let count = 0;
       for (let i = 1; i < rawRows.length; i++) {
         const row = rawRows[i];
-        const studentId = row[0]?.trim();
+        //const row = rawRows[i].split(',');
+        if (!row || row.length < 3) continue;
+
+        const studentId = row[2]?.trim();
         if (!studentId) continue;
 
         let total = 0;
         const history: { date: string; points: number }[] = [];
 
-        // 2. 遍歷標題，精確加總 1-18 週與 Final
         headers.forEach((header: string, index: number) => {
           const val = parseFloat(row[index]) || 0;
-          const cleanHeader = header.trim();
-          
-          // 檢查是否為數字標題 (1-18)
-          const weekNum = parseInt(cleanHeader);
-          if (!isNaN(weekNum) && weekNum >= 1 && weekNum <= 18) {
-            history.push({ date: `Week ${cleanHeader}`, points: val });
-            total += val;
+
+          if (header === 'Total learning-progress points') {
+            total = val;
           }
 
-          // 檢查是否為期末考標題 (Final)
-          if (cleanHeader.toLowerCase() === 'final' || cleanHeader.includes('期末')) {
-            total += val;
+          const isDate = header.includes('/');
+          if (!metadata.includes(header) && isDate) {
+            history.push({ 
+              date: header, 
+              points: val 
+            });
           }
         });
 
-        // 3. 執行 Upsert (存在更新，不存在新增)
-        const q = query(enrollmentsRef, where('courseId', '==', selectedCourse), where('studentId', '==', studentId));
-        const querySnapshot = await getDocs(q);
+        const finalTotal = total > 0 ? total : Number(history.reduce((sum, p) => sum + p.points, 0).toFixed(1));
 
-        if (querySnapshot.empty) {
-          const newDocRef = doc(enrollmentsRef);
-          batch.set(newDocRef, {
-            courseId: selectedCourse,
-            studentId,
-            totalPoints: Number(total.toFixed(1)),
-            weeklyHistory: history,
-            lastUpdated: serverTimestamp()
-          });
-        } else {
-          querySnapshot.forEach((docSnap) => {
-            batch.update(docSnap.ref, {
-              totalPoints: Number(total.toFixed(1)),
-              weeklyHistory: history,
-              lastUpdated: serverTimestamp()
-            });
-          });
-        }
+        const studentData = {
+          courseId: selectedCourse,
+          studentId: studentId,
+          studentUid: "", 
+          totalPoints: finalTotal,
+          weeklyHistory: history,
+          lastUpdated: serverTimestamp()
+        };
+
+        const docId = `${selectedCourse}_${studentId}`;
+        const docRef = doc(db, 'enrollments', docId);
+        batch.set(docRef, studentData, { merge: true });
+        count++;
       }
 
-      // 4. 關鍵：等待 Firebase 完成寫入
-      await batch.commit(); 
+      if (count === 0) throw new Error("沒有偵測到有效的學生資料，請檢查 CSV 格式。");
+
+      // 真正執行寫入
+      await batch.commit();
+      alert(`成功導入 ${count} 筆學生資料！`);
       
-      // 5. 成功後才跳出通知
-      alert(`匯入成功！已完成 ${rawRows.length - 1} 筆資料加總 (含 18 週及期末考)。`);
-      
-      // 重新獲取資料更新介面
+      // 重新抓取資料
       const updatedStudents = await getStudentsByCourse(selectedCourse);
       setStudents(updatedStudents);
-
     } catch (error: any) {
-      // 攔截 Firebase 或程式碼錯誤
-      console.error("匯入程序出錯:", error);
-      
-      if (error.code === 'permission-denied') {
-        alert("匯入失敗：Firebase 權限不足。請確認 Rules 已發佈且您的角色為 teacher。");
-      } else {
-        alert(`匯入失敗：${error.message || "未知錯誤"}`);
-      }
+      console.error("Firebase 上傳失敗：", error);
+      // 這裡會彈出真實的錯誤原因（如 permission-denied）
+      alert(`上傳失敗：${error.code || error.message}`);
     } finally {
       setLoading(false);
-      event.target.value = ''; // 清除 input 讓下次選同個檔案也能觸發
+      if (event.target) event.target.value = ''; 
     }
   };
 
@@ -373,8 +372,8 @@ export default function TeacherDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#dde1e4] dark:divide-[#2a343e]">
-                {sortedStudents.map((student) => {
-                  const isHighRisk = student.finalExamWeight > 50;
+                {sortedStudents.map((student: Student) => {
+                  const isHighRisk = (student.finalExamWeight || 0) > 50;
                   return (
                     <tr
                       key={student.id}

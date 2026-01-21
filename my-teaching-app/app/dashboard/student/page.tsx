@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react'; // 加入 useMemo 以優化過濾效能
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { 
@@ -22,7 +22,8 @@ import {
   Trophy,
   TrendingUp,
   Scale,
-  PlusCircle
+  PlusCircle,
+  ChevronDown
 } from 'lucide-react';
 import {
   XAxis,
@@ -41,6 +42,9 @@ export default function StudentDashboard() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  
+  // 新增狀態：控制排行榜顯示數量
+  const [rankLimit, setRankLimit] = useState<'3' | '5' | '10' | 'all'>('10');
 
   const maxPoints = 100;
 
@@ -66,11 +70,11 @@ export default function StudentDashboard() {
           setEnrollment(myEnrollment);
 
           if (myEnrollment.courseId) {
+            // 修改查詢：獲取所有資料以便前端動態切換數量
             const lbQuery = query(
               collection(db, 'enrollments'),
               where('courseId', '==', myEnrollment.courseId),
-              orderBy('totalPoints', 'desc'),
-              limit(10)
+              orderBy('totalPoints', 'desc')
             );
             const lbSnap = await getDocs(lbQuery);
             setLeaderboard(lbSnap.docs.map(doc => doc.data()));
@@ -84,6 +88,12 @@ export default function StudentDashboard() {
     });
     return () => unsubscribe();
   }, [router]);
+
+  // 使用 useMemo 處理排行榜過濾
+  const visibleLeaderboard = useMemo(() => {
+    if (rankLimit === 'all') return leaderboard;
+    return leaderboard.slice(0, parseInt(rankLimit));
+  }, [leaderboard, rankLimit]);
 
   if (loading) return <div className="flex items-center justify-center min-h-screen dark:bg-[#121517] dark:text-white">Loading...</div>;
 
@@ -117,12 +127,9 @@ export default function StudentDashboard() {
     );
   }
 
-  // --- 關鍵修正：動態轉換圖表數據 ---
+  // 圖表數據轉換邏輯保持不變
   const rawHistory = enrollment.weeklyHistory || [];
-  
-  // 1. 確保數據依照時間排序
   const sortedHistory = [...rawHistory].sort((a, b) => {
-    // 提取日期部分 (例如 "9/15") 並轉換為 Date 物件進行比較
     const parseDate = (d: string) => {
       const parts = d.split('/')[0] + '/' + d.split('/')[1].split(',')[0];
       return new Date(`${new Date().getFullYear()}/${parts.trim()}`).getTime();
@@ -130,14 +137,13 @@ export default function StudentDashboard() {
     return parseDate(a.date) - parseDate(b.date);
   });
 
-  // 2. 計算累計分數 (Cumulative Points)
   let cumulativeSum = 0;
   const chartData = sortedHistory.map((item) => {
-    cumulativeSum += (Number(item.points) || 0); // 逐周累加分數
+    cumulativeSum += (Number(item.points) || 0);
     return {
-      displayDate: item.date,           // X 軸顯示文字 (包含 "part 1" 等備註)
-      weeklyPoints: item.points,        // 該周增加的分數
-      cumulativePoints: Number(cumulativeSum.toFixed(1)) // 累計總分
+      displayDate: item.date,
+      weeklyPoints: item.points,
+      cumulativePoints: Number(cumulativeSum.toFixed(1))
     };
   });
 
@@ -149,6 +155,7 @@ export default function StudentDashboard() {
     <div className="bg-background-light dark:bg-background-dark text-[#121517] min-h-screen flex flex-col font-sans">
       <Header userRole="student" />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 原有課程資訊與數值卡片設計 */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">
@@ -194,6 +201,7 @@ export default function StudentDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 原有圖表區塊 */}
           <div className="lg:col-span-2 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6">
             <h3 className="text-[#121517] dark:text-white text-lg font-bold mb-6">Cumulative Progress</h3>
             <div className="h-80 w-full">
@@ -236,25 +244,90 @@ export default function StudentDashboard() {
               </ResponsiveContainer>
             </div>
           </div>
-          <div className="bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6">
-            <h3 className="text-[#121517] dark:text-white text-lg font-bold mb-4">Class Rankings</h3>
-            <div className="space-y-4">
-              {leaderboard.map((lbStudent, index) => {
+
+          {/* 排行榜區塊 */}
+          {/* 修正後的排行榜區塊 */}
+          <div className="bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6 flex flex-col h-full shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-[#121517] dark:text-white text-lg font-bold">Class Rankings</h3>
+              
+              <div className="relative inline-block">
+                <select 
+                  value={rankLimit}
+                  onChange={(e) => setRankLimit(e.target.value as any)}
+                  className="appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold rounded-lg pl-3 pr-8 py-1.5 outline-none dark:text-white cursor-pointer hover:bg-gray-100 transition-colors"
+                >
+                  <option value="3">Top 3</option>
+                  <option value="5">Top 5</option>
+                  <option value="10">Top 10</option>
+                  <option value="all">All Rank</option>
+                </select>
+                <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* 1. 新增的欄位標題行 (Table Header) */}
+            <div className="grid grid-cols-[50px_1fr_100px] px-4 py-2 mb-2 text-[10px] uppercase font-black tracking-widest text-gray-400 border-b border-gray-50 dark:border-gray-800">
+              <span>Rank</span>
+              <span className="pl-2">User ID</span>
+              <span className="text-right">Score</span>
+            </div>
+
+            <div className="flex-1 space-y-2 overflow-y-auto pr-1 custom-scrollbar max-h-105">
+              {visibleLeaderboard.map((lbStudent, index) => {
                 const isCurrent = lbStudent.studentUid === currentUserData?.uid;
+                
+                const getRankStyle = (idx: number) => {
+                  if (idx === 0) return "bg-yellow-400 text-white shadow-sm"; 
+                  if (idx === 1) return "bg-gray-300 text-white shadow-sm";   
+                  if (idx === 2) return "bg-amber-600 text-white shadow-sm";  
+                  return "bg-gray-100 dark:bg-gray-800 text-gray-500";
+                };
+
                 return (
-                  <div key={index} className={`flex items-center justify-between p-3 rounded-xl ${isCurrent ? 'bg-primary/10 border border-primary/20' : ''}`}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-sm w-4">{index + 1}</span>
-                      <span className="text-sm">{isCurrent ? 'YOU' : anonymizeStudentId(lbStudent.studentId)}</span>
+                  <div 
+                    key={index} 
+                    className={`grid grid-cols-[50px_1fr_100px] items-center p-3 rounded-xl transition-all ${
+                      isCurrent 
+                        ? 'bg-primary/10 border border-primary/20 ring-1 ring-primary/30' 
+                        : 'bg-transparent border border-transparent'
+                    }`}
+                  >
+                    {/* Rank 欄位 */}
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black ${getRankStyle(index)}`}>
+                      {index + 1}
                     </div>
-                    <span className="font-bold">{lbStudent.totalPoints}</span>
+                    
+                    {/* User ID 欄位：本人顯示 YOU，他人顯示「匿名用戶」 */}
+                    <span className={`pl-2 text-xs ${isCurrent ? 'font-black text-primary' : 'font-medium text-gray-500 dark:text-gray-400'}`}>
+                      {isCurrent ? 'YOU' : '匿名用戶'}
+                    </span>
+
+                    {/* Score 欄位：累積分數與 Points 放在同一行並靠右對齊 */}
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className={`text-sm font-black ${isCurrent ? 'text-primary' : 'dark:text-white'}`}>
+                        {lbStudent.totalPoints}
+                      </span>
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">
+                        Points
+                      </span>
+                    </div>
                   </div>
                 );
               })}
+
               {leaderboard.length === 0 && (
-                <p className="text-xs text-gray-400 text-center py-4">等待排行數據中...</p>
+                <div className="text-center py-20 text-xs text-gray-400">數據加載中...</div>
               )}
             </div>
+            
+            {rankLimit !== 'all' && !visibleLeaderboard.some(s => s.studentUid === currentUserData?.uid) && (
+              <div className="mt-4 pt-4 border-t border-dashed border-gray-100 dark:border-gray-800 text-center">
+                <p className="text-[10px] text-gray-400 font-bold italic">
+                  Scroll or select 'All Rank' to see your position
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </main>

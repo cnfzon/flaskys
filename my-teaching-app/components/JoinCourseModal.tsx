@@ -81,7 +81,7 @@ export default function JoinCourseModal({ user, onJoined, onClose }: JoinCourseM
 };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4">
       <div className="bg-white dark:bg-[#1a2027] w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
           <h3 className="text-xl font-bold dark:text-white">加選新課程</h3>

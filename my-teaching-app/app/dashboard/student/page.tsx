@@ -15,7 +15,7 @@ import { auth, db } from '@/lib/firebase/config';
 import { getUserData } from '@/lib/firebase/auth';
 import { anonymizeStudentId, calculatePRValue } from '@/lib/utils/calculations';
 import Header from '@/components/Header';
-import JoinCourseModal from '@/components/JoinCourseModal'; // 確保組件已建立
+import JoinCourseModal from '@/components/JoinCourseModal';
 import {
   Download,
   Plus,
@@ -40,7 +40,7 @@ export default function StudentDashboard() {
   const [enrollment, setEnrollment] = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showJoinModal, setShowJoinModal] = useState(false); // 控制加選彈窗
+  const [showJoinModal, setShowJoinModal] = useState(false);
 
   const maxPoints = 100;
 
@@ -55,7 +55,6 @@ export default function StudentDashboard() {
         const userData = await getUserData(user.uid);
         setCurrentUserData(userData);
 
-        // 核心修正：精確過濾 studentUid 以符合安全性規則
         const enrollQuery = query(
           collection(db, 'enrollments'),
           where('studentUid', '==', user.uid)
@@ -66,12 +65,11 @@ export default function StudentDashboard() {
           const myEnrollment = enrollSnap.docs[0].data();
           setEnrollment(myEnrollment);
 
-          // 只有確定有 courseId 後才抓取排行榜，避免空查詢報錯
           if (myEnrollment.courseId) {
             const lbQuery = query(
               collection(db, 'enrollments'),
               where('courseId', '==', myEnrollment.courseId),
-              orderBy('totalPoints', 'desc'), // 這裡必須搭配 orderBy 與安全性規則索引
+              orderBy('totalPoints', 'desc'),
               limit(10)
             );
             const lbSnap = await getDocs(lbQuery);
@@ -89,7 +87,6 @@ export default function StudentDashboard() {
 
   if (loading) return <div className="flex items-center justify-center min-h-screen dark:bg-[#121517] dark:text-white">Loading...</div>;
 
-  // 引導畫面：若找不到選課資料時顯示
   if (!enrollment) {
     return (
       <div className="min-h-screen bg-background-light dark:bg-background-dark">
@@ -120,11 +117,33 @@ export default function StudentDashboard() {
     );
   }
 
-  // 數據運算
+  // --- 關鍵修正：動態轉換圖表數據 ---
+  const rawHistory = enrollment.weeklyHistory || [];
+  
+  // 1. 確保數據依照時間排序
+  const sortedHistory = [...rawHistory].sort((a, b) => {
+    // 提取日期部分 (例如 "9/15") 並轉換為 Date 物件進行比較
+    const parseDate = (d: string) => {
+      const parts = d.split('/')[0] + '/' + d.split('/')[1].split(',')[0];
+      return new Date(`${new Date().getFullYear()}/${parts.trim()}`).getTime();
+    };
+    return parseDate(a.date) - parseDate(b.date);
+  });
+
+  // 2. 計算累計分數 (Cumulative Points)
+  let cumulativeSum = 0;
+  const chartData = sortedHistory.map((item) => {
+    cumulativeSum += (Number(item.points) || 0); // 逐周累加分數
+    return {
+      displayDate: item.date,           // X 軸顯示文字 (包含 "part 1" 等備註)
+      weeklyPoints: item.points,        // 該周增加的分數
+      cumulativePoints: Number(cumulativeSum.toFixed(1)) // 累計總分
+    };
+  });
+
   const totalPoints = enrollment.totalPoints || 0;
   const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints));
   const finalExamWeight = Math.max(0, 100 - (totalPoints / maxPoints) * 100);
-  const chartData = [{ week: 'Week 1', points: 0 }, { week: 'Current', points: totalPoints }];
 
   return (
     <div className="bg-background-light dark:bg-background-dark text-[#121517] min-h-screen flex flex-col font-sans">
@@ -132,7 +151,9 @@ export default function StudentDashboard() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">{enrollment.courseName || 'Circuit Theory'}</h1>
+            <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">
+              {enrollment.courseName || 'Circuit Theory'}
+            </h1>
             <p className="text-[#677683] text-base">Current Enrolled Course</p>
           </div>
           <div className="flex items-center gap-3">
@@ -148,37 +169,69 @@ export default function StudentDashboard() {
           </div>
         </div>
 
-        {/* 積分與統計卡片區塊 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm">
-            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest"><Trophy className="w-4 h-4" /> Total Points</div>
+            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
+              <Trophy className="w-4 h-4" /> Total Points
+            </div>
             <div className="flex items-baseline gap-2">
               <p className="text-primary text-5xl font-bold">{totalPoints}</p>
               <p className="text-[#677683] text-lg">/ {maxPoints}</p>
             </div>
           </div>
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm">
-            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest"><TrendingUp className="w-4 h-4" /> PR Value</div>
+            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
+              <TrendingUp className="w-4 h-4" /> PR Value
+            </div>
             <p className="text-[#121517] dark:text-white text-4xl font-bold">{prValue.toFixed(1)}</p>
           </div>
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm">
-            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest"><Scale className="w-4 h-4" /> Final Exam Weight</div>
+            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
+              <Scale className="w-4 h-4" /> Final Exam Weight
+            </div>
             <p className="text-[#FF5B59] text-4xl font-bold">{finalExamWeight.toFixed(1)}%</p>
           </div>
         </div>
 
-        {/* 圖表與排行榜 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6">
             <h3 className="text-[#121517] dark:text-white text-lg font-bold mb-6">Cumulative Progress</h3>
-            <div className="h-75 w-full">
+            <div className="h-80 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                  <XAxis dataKey="week" stroke="#677683" fontSize={12} />
+                  <XAxis 
+                    dataKey="displayDate" 
+                    stroke="#677683" 
+                    fontSize={11} 
+                    tickMargin={10}
+                  />
                   <YAxis stroke="#677683" fontSize={12} domain={[0, maxPoints]} />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="points" stroke="#6ca7da" fill="#6ca7da" fillOpacity={0.1} strokeWidth={3} />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-white dark:bg-[#1a2027] p-3 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                            <p className="font-bold text-sm mb-1 text-gray-800 dark:text-white">{data.displayDate}</p>
+                            <p className="text-primary text-xs font-semibold">累計得分: {data.cumulativePoints}</p>
+                            <p className="text-green-500 text-xs font-semibold">當次增加: +{data.weeklyPoints}</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="cumulativePoints" 
+                    stroke="#6ca7da" 
+                    fill="#6ca7da" 
+                    fillOpacity={0.1} 
+                    strokeWidth={3} 
+                    dot={{ r: 4, fill: "#6ca7da" }} 
+                    activeDot={{ r: 6 }}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -198,12 +251,14 @@ export default function StudentDashboard() {
                   </div>
                 );
               })}
+              {leaderboard.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">等待排行數據中...</p>
+              )}
             </div>
           </div>
         </div>
       </main>
 
-      {/* 渲染彈窗 */}
       {showJoinModal && (
         <JoinCourseModal 
           user={currentUserData} 

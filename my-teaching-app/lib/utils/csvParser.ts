@@ -5,10 +5,13 @@ export const parseCSV = (text: string): string[][] => {
 
   return lines.map(line => {
     const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-    if (!matches) return line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
     
+    if (!matches) {
+      return line.split(',').map(cell => cell.trim().replace(/^"|"$/g, ''));
+    }
+
     return matches.map(cell => 
-      cell.trim().replace(/^"|"$/g, '') 
+      cell.trim().replace(/^"|"$/g, '')
     );
   });
 };

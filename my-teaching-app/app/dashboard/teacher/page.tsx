@@ -87,102 +87,85 @@ export default function TeacherDashboard() {
     fetchStudents();
   }, [selectedCourse]);
 
- const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    
-    // 強制檢查：如果沒選課程，直接報錯不執行
-    if (!selectedCourse || selectedCourse === "") {
-      alert("錯誤：請先選擇課程（如：電路學）再上傳檔案。");
-      return;
+const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!selectedCourse || !file) return;
+
+  setLoading(true);
+  try {
+    const text = await file.text();
+    const rawRows = parseCSV(text);
+    if (rawRows.length < 2) throw new Error("CSV 格式錯誤");
+
+    const headers = rawRows[0].map(h => h.trim());
+    const batch = writeBatch(db);
+
+    for (let i = 1; i < rawRows.length; i++) {
+      const row = rawRows[i];
+      if (!row || row.length < 3) continue;
+
+      const studentId = row[2]?.trim();
+      if (!studentId) continue;
+
+      let currentAccumulatedPoints = 0;
+      let rawFinalGrade = 0;
+      let feedbackScore = 0;
+      const history: { date: string; points: number }[] = [];
+
+      headers.forEach((header, index) => {
+        const rawValue = row[index]?.trim() || "0";
+        const score = parseFloat(rawValue) || 0;
+
+        const isWeeklyGrade = header.includes('/') || header.toLowerCase().includes('midterm');
+        
+        if (isWeeklyGrade) {
+          currentAccumulatedPoints += score;
+          history.push({ date: header, points: score });
+        } else if (header === 'Final') {
+          rawFinalGrade = score;
+        } else if (header.includes('Course Feedback')) {
+          feedbackScore = score;
+          history.push({ date: "Course Feedback", points: score });
+        }
+      });
+
+      const earnedFinalPoints = (100 - currentAccumulatedPoints) * (rawFinalGrade / 100);
+      const finalTotalPoints = currentAccumulatedPoints + earnedFinalPoints;
+
+      history.push({ date: "Final", points: Number(earnedFinalPoints.toFixed(2)) });
+
+      const docId = `${selectedCourse}_${studentId}`;
+      const docRef = doc(db, 'enrollments', docId);
+
+      batch.set(docRef, {
+        courseId: selectedCourse,
+        studentId: studentId,
+        totalPoints: Number(finalTotalPoints.toFixed(1)),
+        final: rawFinalGrade,
+        preFinalTotal: Number(earnedFinalPoints.toFixed(2)),
+        weeklyHistory: history,
+        courseFeedback: feedbackScore,
+        lastUpdated: serverTimestamp()
+      }, { merge: true });
     }
 
-    if (!file) return;
-
-    setLoading(true);
-    try {
-      const text = await file.text();
-      // = parseCSV(text);
-      //if (rawRows.length < 2) throw new Error("CSV 檔案內容不足");
-      const results = Papa.parse(text, { skipEmptyLines: true });
-      const rawRows = results.data as string[][];
-
-      const headers = rawRows[0].map((h: string) => h.trim());
-      //const headers = rawRows[0].split(',').map((h: string) => h.trim());
-      const batch = writeBatch(db);
-      const enrollmentsRef = collection(db, 'enrollments');
-
-      // 針對您的 CSV 欄位名稱進行精確匹配
-      const metadata = ['No.', 'Class', 'ID', 'Total learning-progress points', 'Weight of final exam (%)', 'Grade', 'Course Feedback'];
-
-      let count = 0;
-      for (let i = 1; i < rawRows.length; i++) {
-        const row = rawRows[i];
-        //const row = rawRows[i].split(',');
-        if (!row || row.length < 3) continue;
-
-        const studentId = row[2]?.trim();
-        if (!studentId) continue;
-
-        let total = 0;
-        const history: { date: string; points: number }[] = [];
-
-        headers.forEach((header: string, index: number) => {
-          const val = parseFloat(row[index]) || 0;
-
-          if (header === 'Total learning-progress points') {
-            total = val;
-          }
-
-          const isDate = header.includes('/');
-          if (!metadata.includes(header) && isDate) {
-            history.push({ 
-              date: header, 
-              points: val 
-            });
-          }
-        });
-
-        const finalTotal = total > 0 ? total : Number(history.reduce((sum, p) => sum + p.points, 0).toFixed(1));
-
-        const studentData = {
-          courseId: selectedCourse,
-          studentId: studentId,
-          studentUid: "", 
-          totalPoints: finalTotal,
-          weeklyHistory: history,
-          lastUpdated: serverTimestamp()
-        };
-
-        const docId = `${selectedCourse}_${studentId}`;
-        const docRef = doc(db, 'enrollments', docId);
-        batch.set(docRef, studentData, { merge: true });
-        count++;
-      }
-
-      if (count === 0) throw new Error("沒有偵測到有效的學生資料，請檢查 CSV 格式。");
-
-      // 真正執行寫入
-      await batch.commit();
-      alert(`成功導入 ${count} 筆學生資料！`);
-      
-      // 重新抓取資料
-      const updatedStudents = await getStudentsByCourse(selectedCourse);
-      setStudents(updatedStudents);
-    } catch (error: any) {
-      console.error("Firebase 上傳失敗：", error);
-      // 這裡會彈出真實的錯誤原因（如 permission-denied）
-      alert(`上傳失敗：${error.code || error.message}`);
-    } finally {
-      setLoading(false);
-      if (event.target) event.target.value = ''; 
-    }
-  };
+    await batch.commit();
+    alert("成績計算完成並成功導入！");
+    const updatedStudents = await getStudentsByCourse(selectedCourse);
+    setStudents(updatedStudents);
+  } catch (error: any) {
+    console.error("上傳失敗:", error);
+    alert(`上傳失敗: ${error.message}`);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleEditScore = async (studentId: string, currentValue: number) => {
     if (editingStudent === studentId) {
       try {
         setLoading(true);
-        // 此處 studentId 為 enrollment 文件的 ID
+        // enrollment ID
         const studentRef = doc(db, 'enrollments', studentId);
         await updateDoc(studentRef, { totalPoints: editValue, lastUpdated: serverTimestamp() });
         setStudents(prev => prev.map(s => s.id === studentId ? { ...s, totalPoints: editValue } : s));
@@ -203,7 +186,6 @@ export default function TeacherDashboard() {
     return students.reduce((acc, s) => acc + (s.totalPoints || 0), 0) / students.length;
   }, [students]);
 
-  // 修正：補齊缺失的 atRiskStudents 定義 (總分低於 60 分者)
   const atRiskStudents = useMemo(() => {
     return students.filter(s => (s.totalPoints || 0) < 60).length;
   }, [students]);

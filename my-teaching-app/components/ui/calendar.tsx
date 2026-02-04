@@ -18,26 +18,29 @@ function Calendar({
       showOutsideDays={showOutsideDays}
       className={className}
       classNames={{
-        months: "flex flex-col space-y-4 relative min-h-[400px]", 
+        months: "flex flex-col space-y-4 relative min-h-[380px]", 
         month: "space-y-4 w-full",
-        caption: "flex justify-start pt-1 relative items-center mb-4", 
+        month_caption: "flex justify-start pt-1 relative items-center mb-4", 
         caption_label: "text-xl font-black dark:text-white ml-2",
-        // 導覽按鈕移至右下角
         nav: "absolute bottom-0 right-2 flex items-center gap-2 z-20", 
-        nav_button: "h-9 w-9 bg-transparent p-0 opacity-50 hover:opacity-100 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center",
+        button_previous: "h-9 w-9 bg-transparent p-0 opacity-50 hover:opacity-100 dark:text-white transition-opacity border border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center",
+        button_next: "h-9 w-9 bg-transparent p-0 opacity-50 hover:opacity-100 dark:text-white transition-opacity border border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center",
         
-        // 核心修正：強制使用 HTML 原生表格配合 Tailwind 分配寬度，確保 7 欄換行
-        table: "w-full border-collapse",
-        head_row: "flex w-full mb-2", 
-        head_cell: "text-gray-500 font-black text-[11px] uppercase text-center flex-1 h-9 flex items-center justify-center", 
-        row: "flex w-full", // 確保每一行寬度撐滿
-        cell: "h-11 flex-1 text-center text-sm p-0 relative flex items-center justify-center focus-within:relative focus-within:z-20", 
+        // 核心修正：針對 v9 的 div 結構進行 grid 佈局
+        month_grid: "w-full border-collapse", 
+        weekdays: "grid grid-cols-7 w-full mb-2", // 星期標題容器
+        weekday: "text-gray-500 font-black text-[11px] uppercase text-center h-10 flex items-center justify-center", 
         
-        day: "h-9 w-9 p-0 font-medium aria-selected:opacity-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors dark:text-gray-300 flex items-center justify-center",
-        day_selected: "bg-primary text-white hover:bg-primary",
-        day_today: "bg-gray-100 dark:bg-gray-800 text-primary font-black ring-1 ring-primary/30",
-        day_outside: "text-gray-400 opacity-20", 
-        day_hidden: "invisible",
+        weeks: "w-full flex flex-col gap-1", // 每一週的容器
+        week: "grid grid-cols-7 w-full", // 關鍵：每一週強制為 7 欄 grid
+        
+        day: "h-9 w-9 p-0 font-medium aria-selected:opacity-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors dark:text-gray-300 flex items-center justify-center mx-auto",
+        day_button: "h-9 w-9 flex items-center justify-center", // v9 新增的按鈕層級
+        selected: "bg-primary text-white hover:bg-primary hover:text-white focus:bg-primary focus:text-white",
+        today: "bg-gray-100 dark:bg-gray-800 text-primary font-black ring-1 ring-primary/30",
+        outside: "text-gray-400 opacity-30", 
+        disabled: "text-gray-400 opacity-20",
+        hidden: "invisible",
         ...classNames,
       }}
       components={{

@@ -44,7 +44,6 @@ export default function TeacherDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('totalPoints');
 
-  // 1. 監聽登入並獲取該老師的課程
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -53,7 +52,7 @@ export default function TeacherDashboard() {
           setCourses(teacherCourses);
           if (teacherCourses.length > 0) setSelectedCourse(teacherCourses[0].id);
         } catch (error) {
-          console.error("載入課程失敗:", error);
+          console.error("載入失敗:", error);
         } finally {
           setLoading(false);
         }
@@ -64,29 +63,24 @@ export default function TeacherDashboard() {
     return () => unsubscribe();
   }, [router]);
 
-  // 2. 核心修正：直接在組件內執行 Firestore 查詢，確保資料獲取與狀態同步
   const fetchClassData = async (courseId: string) => {
     if (!courseId) return;
     setLoading(true);
     try {
-      // 直接查詢 enrollments 集合中 courseId 匹配的資料
       const q = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
       const querySnapshot = await getDocs(q);
-      
       const studentList = querySnapshot.docs.map(doc => {
         const data = doc.data();
         return {
           id: doc.id,
           ...data,
-          // 強制轉為數字以利後續計算
           totalPoints: Number(data.totalPoints || 0),
           studentId: data.studentId || "Unknown"
         };
       });
-      
       setStudents(studentList);
     } catch (error) {
-      console.error("抓取學生數據失敗:", error);
+      console.error("抓取失敗:", error);
     } finally {
       setLoading(false);
     }
@@ -96,7 +90,6 @@ export default function TeacherDashboard() {
     if (selectedCourse) fetchClassData(selectedCourse);
   }, [selectedCourse]);
 
-  // --- 統計計算 ---
   const stats = useMemo(() => {
     const total = students.length;
     if (total === 0) return { avg: "0.0", total: 0, risk: 0 };
@@ -129,7 +122,6 @@ export default function TeacherDashboard() {
     });
   }, [students, searchTerm, sortBy]);
 
-  // 3. 上傳 CSV 邏輯
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!selectedCourse || !file) return;
@@ -144,11 +136,9 @@ export default function TeacherDashboard() {
         const row = rawRows[i];
         if (!row || row.length < 3) continue;
         const studentId = row[2]?.trim();
-        
         let accumulated = 0;
         let finalVal = 0;
         const history: any[] = [];
-
         headers.forEach((header, idx) => {
           const val = parseFloat(row[idx]?.trim()) || 0;
           if (header.includes('/') || header.toLowerCase().includes('midterm')) {
@@ -158,7 +148,6 @@ export default function TeacherDashboard() {
             finalVal = val;
           }
         });
-
         const earnedFinal = (100 - accumulated) * (finalVal / 100);
         const docRef = doc(db, 'enrollments', `${selectedCourse}_${studentId}`);
         batch.set(docRef, {
@@ -194,14 +183,14 @@ export default function TeacherDashboard() {
             <select value={selectedCourse} onChange={(e) => setSelectedCourse(e.target.value)} className="bg-white dark:bg-[#1a222c] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold dark:text-white outline-none">
               {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-            <label className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer flex items-center gap-2 transition-all active:scale-95 shadow-lg">
+            <label className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer flex items-center gap-2 shadow-lg">
               <Upload size={18} /> Import CSV
               <input type="file" hidden accept=".csv" onChange={handleFileUpload} />
             </label>
           </div>
         </div>
 
-        {/* 統計卡片 */}
+        {/* 統計指標 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-[#1a222c] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 text-gray-400 mb-2 font-black uppercase text-[10px] tracking-widest">
@@ -235,7 +224,7 @@ export default function TeacherDashboard() {
               <BarChart data={distribution}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis dataKey="range" fontSize={11} fontWeight="bold" axisLine={false} tickLine={false} />
-                <YAxis fontSize={11} axisLine={false} tickLine={false} />
+                <YAxis axisLine={false} tickLine={false} fontSize={12} />
                 <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px rgba(0,0,0,0.05)'}} />
                 <Bar dataKey="count" fill="#6BA6DA" radius={[6, 6, 0, 0]} barSize={40} />
               </BarChart>
@@ -261,29 +250,37 @@ export default function TeacherDashboard() {
           <table className="w-full text-left">
             <thead className="bg-gray-50/50 dark:bg-gray-800/50 text-[10px] uppercase font-black text-gray-400">
               <tr>
-                <th className="px-8 py-5">Rank</th>
-                <th className="px-8 py-5">Student ID</th>
-                <th className="px-8 py-5 text-center">Current Score</th>
-                <th className="px-8 py-5 text-center">Status</th>
-                <th className="px-8 py-5 text-right">Actions</th>
+                <th className="px-8 py-4">Rank</th>
+                <th className="px-8 py-4">Student ID</th>
+                <th className="px-8 py-4 text-center">Current Score</th>
+                <th className="px-8 py-4 text-center">Status</th>
+                <th className="px-8 py-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y dark:divide-gray-800">
-              {sortedStudents.map((s, idx) => (
-                <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group">
-                  <td className="px-8 py-5 font-black text-xs text-gray-300">{idx + 1}</td>
-                  <td className="px-8 py-5 font-bold dark:text-white">{s.studentId}</td>
-                  <td className="px-8 py-5 text-center font-black text-primary text-xl">{s.totalPoints}</td>
-                  <td className="px-8 py-5 text-center">
-                    <span className={`px-3 py-1 rounded-full text-[9px] font-black ${s.totalPoints < 60 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                      {s.totalPoints < 60 ? 'CRITICAL' : 'STABLE'}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <MoreHorizontal className="w-5 h-5 text-gray-300 cursor-pointer ml-auto group-hover:text-gray-600" />
-                  </td>
-                </tr>
-              ))}
+              {sortedStudents.map((s, idx) => {
+                const isAtRisk = s.totalPoints < 60;
+                return (
+                  <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group">
+                    <td className="px-8 py-5 font-black text-xs text-gray-300">{idx + 1}</td>
+                    <td className="px-8 py-5 font-bold dark:text-white">{s.studentId}</td>
+                    {/* 分數顏色判斷：小於 60 變紅 */}
+                    <td className="px-8 py-5 text-center font-black text-xl">
+                      <span className={isAtRisk ? 'text-[#FF5B59]' : 'text-primary'}>
+                        {s.totalPoints}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <span className={`px-3 py-1 rounded-full text-[9px] font-black ${isAtRisk ? 'bg-red-100 text-[#FF5B59]' : 'bg-green-100 text-green-600'}`}>
+                        {isAtRisk ? 'CRITICAL' : 'STABLE'}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <MoreHorizontal className="w-5 h-5 text-gray-300 cursor-pointer ml-auto group-hover:text-gray-600" />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {students.length === 0 && (

@@ -13,13 +13,21 @@ interface GradeCalendarProps {
 }
 
 export default function GradeCalendar({ courseId, userRole, currentUserUid }: GradeCalendarProps) {
+  // 修正：初始化 selectedDate
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [allEnrollments, setAllEnrollments] = useState<any[]>([]);
   const [highlightDays, setHighlightDays] = useState<string[]>([]);
 
+  // 輔助函式：統一日期格式為 M/D (避免 02/05 這種格式導致比對失敗)
+  const formatDate = (date: Date | undefined) => {
+    if (!date) return '';
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
+
   useEffect(() => {
     const fetchEnrollments = async () => {
-      if (!courseId) return;
+      // 學生端或老師端都需要 courseId 才能撈取同班同學的成績
+      if (!courseId) return; 
       try {
         const q = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
         const snap = await getDocs(q);
@@ -40,10 +48,8 @@ export default function GradeCalendar({ courseId, userRole, currentUserUid }: Gr
     fetchEnrollments();
   }, [courseId]);
 
-  // 修正：明確定義 date 型別為 Date
   const isDateHighlighted = (date: Date) => {
-    const formatted = `${date.getMonth() + 1}/${date.getDate()}`;
-    return highlightDays.includes(formatted);
+    return highlightDays.includes(formatDate(date));
   };
 
   return (
@@ -67,7 +73,8 @@ export default function GradeCalendar({ courseId, userRole, currentUserUid }: Gr
 
       <div className="lg:col-span-2">
         <DailyRoster 
-          selectedDate={selectedDate ? `${selectedDate.getMonth() + 1}/${selectedDate.getDate()}` : ''}
+          // 使用修正後的格式化函式傳入日期字串
+          selectedDate={formatDate(selectedDate)}
           enrollments={allEnrollments}
           userRole={userRole}
           currentUserUid={currentUserUid}

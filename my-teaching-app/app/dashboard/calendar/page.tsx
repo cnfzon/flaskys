@@ -39,7 +39,9 @@ export default function CalendarPage() {
             if (teacherCourses.length > 0) setSelectedCourse(teacherCourses[0].id);
           } else {
             // 修正：增加判斷以防學生端出錯
-            setSelectedCourse(userData.currentCourseId || '');
+            //setSelectedCourse(userData.currentCourseId || '');
+            const studentCourseId = userData.currentCourseId || 'circuit-theory'; 
+            setSelectedCourse(studentCourseId);
           }
         }
       } catch (error) {

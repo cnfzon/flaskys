@@ -8,12 +8,11 @@ import {
   query, 
   where, 
   getDocs, 
-  orderBy, 
-  limit 
+  orderBy 
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/config';
 import { getUserData } from '@/lib/firebase/auth';
-import { anonymizeStudentId, calculatePRValue } from '@/lib/utils/calculations';
+import { calculatePRValue } from '@/lib/utils/calculations';
 import Header from '@/components/Header';
 import JoinCourseModal from '@/components/JoinCourseModal';
 import {
@@ -113,78 +112,96 @@ export default function StudentDashboard() {
     );
   }
 
-  // --- 修正後的數據處理邏輯 (解決 split 報錯) ---
-  const rawHistory = enrollment.weeklyHistory || [];
-  const sortedHistory = [...rawHistory].sort((a, b) => {
-    const parseToTime = (dateStr: string) => {
-      if (!dateStr || typeof dateStr !== 'string') return 0;
-      
-      // 處理日期格式如 "9/15" 或 "10/2, part 1"
-      if (dateStr.includes('/')) {
-        const parts = dateStr.split('/');
-        const month = parts[0];
-        // 取得斜線後的數字，並過濾掉逗號後的說明文字
-        const day = parts[1]?.split(/[\s,]+/)[0]; 
-        if (month && day) {
-          return new Date(`${new Date().getFullYear()}/${month}/${day}`).getTime();
-        }
-      }
-      
-      // 處理期中考與期末考，讓它們排在最後面
-      const lower = dateStr.toLowerCase();
-      if (lower.includes('midterm')) return 9999999999998;
-      if (lower.includes('final')) return 9999999999999;
-      
-      return 0;
-    };
-    return parseToTime(a.date) - parseToTime(b.date);
-  });
+const totalPoints = enrollment.totalPoints || 0;
+const rawHistory = enrollment.weeklyHistory || [];
 
-  let cumulativeSum = 0;
-  const chartData = sortedHistory.map((item) => {
-    cumulativeSum += (Number(item.points) || 0);
-    return {
-      displayDate: item.date,
-      weeklyPoints: item.points,
-      cumulativePoints: Number(cumulativeSum.toFixed(1))
-    };
-  });
+const sumWithoutFinal = rawHistory.reduce((acc: number, item: any) => {
+  if (item.date === "Final") return acc;
+  return acc + (Number(item.points) || 0);
+}, 0);
 
-  const totalPoints = enrollment.totalPoints || 0;
-  const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints));
-  const finalExamWeight = Math.max(0, 100 - (totalPoints / maxPoints) * 100);
+const finalExamWeight = Math.max(0, 100 - sumWithoutFinal);
 
+const sortedHistory = [...rawHistory].sort((a, b) => {
+  const parseToTime = (dateStr: string) => {
+    if (!dateStr || typeof dateStr !== 'string') return 0;
+    if (dateStr.includes('/')) {
+      const parts = dateStr.split('/');
+      const month = parts[0];
+      const day = parts[1]?.split(/[\s,]+/)[0]; 
+      if (month && day) return new Date(`${new Date().getFullYear()}/${month}/${day}`).getTime();
+    }
+    const lower = dateStr.toLowerCase();
+    if (lower.includes('midterm')) return 9999999999998;
+    if (lower.includes('final')) return 9999999999999;
+    return 0;
+  };
+  return parseToTime(a.date) - parseToTime(b.date);
+});
+
+let cumulativeSum = 0;
+const chartData = sortedHistory.map((item) => {
+  cumulativeSum += (Number(item.points) || 0);
+  return {
+    displayDate: item.date,
+    weeklyPoints: item.points,
+    cumulativePoints: Number(cumulativeSum.toFixed(1))
+  };
+});
+
+const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints));
   return (
     <div className="bg-background-light dark:bg-background-dark text-[#121517] min-h-screen flex flex-col font-sans transition-colors duration-300">
       <Header userRole="student" />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* 標題與課程名稱 */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">{enrollment.courseName || 'Circuit Theory'}</h1>
+            <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">
+              {enrollment.courseName || 'Circuit Theory'}
+            </h1>
             <p className="text-[#677683] text-base">Current Enrolled Course</p>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowJoinModal(true)} className="flex items-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] text-[#121517] dark:text-white text-sm font-bold shadow-sm"><Plus className="w-5 h-5" /> Enroll New</button>
-            <button className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md"><Download className="w-5 h-5" /> My Report</button>
+            <button onClick={() => setShowJoinModal(true)} className="flex items-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] text-[#121517] dark:text-white text-sm font-bold shadow-sm">
+              <Plus className="w-5 h-5" /> Enroll New
+            </button>
+            <button className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md">
+              <Download className="w-5 h-5" /> My Report
+            </button>
           </div>
         </div>
 
+        {/* 數據卡片區域 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm transition-all hover:shadow-md">
-            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest"><Trophy className="w-4 h-4" /> Total Points</div>
-            <div className="flex items-baseline gap-2"><p className="text-primary text-5xl font-bold">{totalPoints}</p><p className="text-[#677683] text-lg">/ {maxPoints}</p></div>
+            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
+              <Trophy className="w-4 h-4" /> Total Points
+            </div>
+            <div className="flex items-baseline gap-2">
+              <p className="text-primary text-5xl font-bold">{totalPoints}</p>
+              <p className="text-[#677683] text-lg">/ {maxPoints}</p>
+            </div>
           </div>
+          
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm transition-all hover:shadow-md">
-            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest"><TrendingUp className="w-4 h-4" /> PR Value</div>
+            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
+              <TrendingUp className="w-4 h-4" /> PR Value
+            </div>
             <p className="text-[#121517] dark:text-white text-4xl font-bold">{prValue.toFixed(1)}</p>
           </div>
+
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm transition-all hover:shadow-md">
-            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest"><Scale className="w-4 h-4" /> Final Exam Weight</div>
+            <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
+              <Scale className="w-4 h-4" /> Final Exam Weight
+            </div>
             <p className="text-[#FF5B59] text-4xl font-bold">{finalExamWeight.toFixed(1)}%</p>
           </div>
         </div>
 
+        {/* 圖表與排行榜 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* 累積進度圖表 */}
           <div className="lg:col-span-2 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6 shadow-sm">
             <h3 className="text-[#121517] dark:text-white text-lg font-bold mb-6">Cumulative Progress</h3>
             <div className="h-80 w-full">
@@ -212,11 +229,16 @@ export default function StudentDashboard() {
             </div>
           </div>
 
+          {/* 班級排行榜 */}
           <div className="bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6 flex flex-col h-full shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-[#121517] dark:text-white text-lg font-bold">Class Rankings</h3>
               <div className="relative inline-block">
-                <select value={rankLimit} onChange={(e) => setRankLimit(e.target.value as any)} className="appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold rounded-lg pl-3 pr-8 py-1.5 outline-none dark:text-white cursor-pointer hover:bg-gray-100 transition-colors">
+                <select 
+                  value={rankLimit} 
+                  onChange={(e) => setRankLimit(e.target.value as any)} 
+                  className="appearance-none bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-bold rounded-lg pl-3 pr-8 py-1.5 outline-none dark:text-white cursor-pointer hover:bg-gray-100 transition-colors"
+                >
                   <option value="3">Top 3</option>
                   <option value="5">Top 5</option>
                   <option value="10">Top 10</option>
@@ -244,7 +266,12 @@ export default function StudentDashboard() {
                   <div key={index} className={`grid grid-cols-[50px_1fr_100px] items-center p-3 rounded-xl transition-all ${isCurrent ? 'bg-primary/10 border border-primary/20 ring-1 ring-primary/30' : 'bg-transparent border border-transparent'}`}>
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-black ${getRankStyle(index)}`}>{index + 1}</div>
                     <span className={`pl-2 text-xs ${isCurrent ? 'font-black text-primary' : 'font-medium text-gray-500 dark:text-gray-400'}`}>{isCurrent ? 'YOU' : '匿名用戶'}</span>
-                    <div className="flex items-center justify-end gap-1.5"><span className={`text-sm font-black ${isCurrent ? 'text-primary' : 'dark:text-white'}`}>{lbStudent.totalPoints}</span><span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Points</span></div>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span className={`text-sm font-black ${isCurrent ? 'text-primary' : 'dark:text-white'}`}>
+                        {lbStudent.totalPoints}
+                      </span>
+                      <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Points</span>
+                    </div>
                   </div>
                 );
               })}
@@ -259,7 +286,13 @@ export default function StudentDashboard() {
           </div>
         </div>
       </main>
-      {showJoinModal && <JoinCourseModal user={currentUserData} onJoined={() => window.location.reload()} onClose={() => setShowJoinModal(false)} />}
+      {showJoinModal && (
+        <JoinCourseModal 
+          user={currentUserData} 
+          onJoined={() => window.location.reload()} 
+          onClose={() => setShowJoinModal(false)} 
+        />
+      )}
     </div>
   );
 }

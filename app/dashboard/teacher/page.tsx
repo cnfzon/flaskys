@@ -17,6 +17,7 @@ import {
 import { getCoursesByTeacher } from '@/lib/firebase/courses';
 import { parseCSV } from '@/lib/utils/csvParser';
 import Header from '@/components/Header';
+import ManageCoursesModal from '@/components/ManageCoursesModal';
 
 import {
   Upload,
@@ -27,7 +28,8 @@ import {
   Users,
   AlertTriangle,
   BarChart3,
-  Loader2
+  Loader2,
+  Settings
 } from 'lucide-react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -36,6 +38,7 @@ import { Course } from '@/types';
 type SortOption = 'totalPoints' | 'studentId';
 
 export default function TeacherDashboard() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const router = useRouter();
   const [students, setStudents] = useState<any[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -44,18 +47,26 @@ export default function TeacherDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('totalPoints');
 
+  // 封裝課程更新邏輯
+  const refreshCourses = async (userId: string) => {
+    try {
+      const teacherCourses = await getCoursesByTeacher(userId);
+      setCourses(teacherCourses);
+      // 如果目前沒選課程且有資料，預設選第一個課程
+      if (teacherCourses.length > 0 && !selectedCourse) {
+        setSelectedCourse(teacherCourses[0].id);
+      }
+    } catch (error) {
+      console.error("載入課程失敗:", error);
+    }
+  };
+
+  // 1. 合併身分驗證與課程初始化邏輯
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        try {
-          const teacherCourses = await getCoursesByTeacher(user.uid);
-          setCourses(teacherCourses);
-          if (teacherCourses.length > 0) setSelectedCourse(teacherCourses[0].id);
-        } catch (error) {
-          console.error("載入失敗:", error);
-        } finally {
-          setLoading(false);
-        }
+        await refreshCourses(user.uid);
+        setLoading(false);
       } else {
         router.push('/login');
       }
@@ -63,6 +74,7 @@ export default function TeacherDashboard() {
     return () => unsubscribe();
   }, [router]);
 
+  // 2. 當選定課程改變時，抓取該課程專屬的學生成績
   const fetchClassData = async (courseId: string) => {
     if (!courseId) return;
     setLoading(true);
@@ -80,7 +92,7 @@ export default function TeacherDashboard() {
       });
       setStudents(studentList);
     } catch (error) {
-      console.error("抓取失敗:", error);
+      console.error("抓取班級數據失敗:", error);
     } finally {
       setLoading(false);
     }
@@ -90,6 +102,7 @@ export default function TeacherDashboard() {
     if (selectedCourse) fetchClassData(selectedCourse);
   }, [selectedCourse]);
 
+  // 統計邏輯與圖表數據處理
   const stats = useMemo(() => {
     const total = students.length;
     if (total === 0) return { avg: "0.0", total: 0, risk: 0 };
@@ -169,21 +182,46 @@ export default function TeacherDashboard() {
   return (
     <div className="bg-background-light dark:bg-background-dark font-sans text-[#121517] min-h-screen transition-colors duration-300">
       <Header title="Teacher Dashboard" userRole="teacher" />
+
+      {/* 課程管理彈窗 */}
+      <ManageCoursesModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        teacherId={auth.currentUser?.uid} 
+        courses={courses} 
+        onUpdate={() => auth.currentUser && refreshCourses(auth.currentUser.uid)} 
+      />
+
       <main className="max-w-7xl mx-auto p-6 flex flex-col gap-8">
-        
-        {/* 操作區域 */}
+        {/* 修正：合併後的標題與操作區域 */}
         <div className="flex flex-col md:flex-row justify-between items-end gap-4">
           <div>
             <h1 className="text-3xl font-black dark:text-white">班級成績管理</h1>
             <p className="text-sm text-gray-400 font-bold uppercase tracking-widest">
-              Course: {courses.find(c => c.id === selectedCourse)?.name || "Loading..."}
+              Course: <span className="text-primary">{courses.find(c => c.id === selectedCourse)?.name || "Loading..."}</span>
             </p>
           </div>
+          
           <div className="flex gap-3">
-            <select value={selectedCourse} onChange={(e) => setSelectedCourse(e.target.value)} className="bg-white dark:bg-[#1a222c] border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm font-bold dark:text-white outline-none">
-              {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <label className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-xl text-sm font-bold cursor-pointer flex items-center gap-2 shadow-lg">
+            <div className="relative">
+              <select 
+                value={selectedCourse} 
+                onChange={(e) => setSelectedCourse(e.target.value)} 
+                className="appearance-none bg-white dark:bg-[#1a222c] border border-gray-200 dark:border-gray-700 rounded-xl pl-5 pr-10 py-3 text-sm font-bold dark:text-white outline-none shadow-sm cursor-pointer"
+              >
+                {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="p-3 bg-gray-100 dark:bg-gray-800 rounded-xl text-gray-500 hover:text-primary transition-colors border dark:border-gray-700"
+            >
+              <Settings size={20} />
+            </button>
+
+            <label className="bg-primary hover:bg-primary/90 text-white px-5 py-3 rounded-xl text-sm font-bold cursor-pointer flex items-center gap-2 shadow-lg transition-transform active:scale-95">
               <Upload size={18} /> Import CSV
               <input type="file" hidden accept=".csv" onChange={handleFileUpload} />
             </label>
@@ -213,7 +251,6 @@ export default function TeacherDashboard() {
         </div>
 
         {/* 成績分布圖 */}
-        
         <div className="bg-white dark:bg-[#1a222c] p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
           <div className="flex items-center gap-2 mb-8 text-gray-400">
             <BarChart3 size={18} />
@@ -264,7 +301,6 @@ export default function TeacherDashboard() {
                   <tr key={s.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group">
                     <td className="px-8 py-5 font-black text-xs text-gray-300">{idx + 1}</td>
                     <td className="px-8 py-5 font-bold dark:text-white">{s.studentId}</td>
-                    {/* 分數顏色判斷：小於 60 變紅 */}
                     <td className="px-8 py-5 text-center font-black text-xl">
                       <span className={isAtRisk ? 'text-[#FF5B59]' : 'text-primary'}>
                         {s.totalPoints}
@@ -283,7 +319,7 @@ export default function TeacherDashboard() {
               })}
             </tbody>
           </table>
-          {students.length === 0 && (
+          {students.length === 0 && !loading && (
             <div className="p-20 text-center flex flex-col items-center gap-3">
               <Loader2 className="w-8 h-8 text-gray-200 animate-spin" />
               <p className="text-gray-400 text-sm font-medium italic">Waiting for data synchronization...</p>

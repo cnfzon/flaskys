@@ -1,4 +1,3 @@
-// lib/firebase/courses.ts
 import {
   collection,
   doc,
@@ -6,15 +5,12 @@ import {
   getDocs,
   query,
   where,
-  addDoc, // 修改為 addDoc 以便自動產生 ID
+  addDoc, 
   deleteDoc,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from './config';
 import { Course } from '@/types';
-
-// 產生隨機 6 位數邀請碼
-const generateInviteCode = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 export const getCourse = async (courseId: string): Promise<Course | null> => {
   const courseDoc = await getDoc(doc(db, 'courses', courseId));
@@ -43,20 +39,32 @@ export const getCoursesByTeacher = async (teacherId: string): Promise<Course[]> 
   });
 };
 
-// 修正：支援自動產生邀請碼與建立課程
-export const createCourse = async (teacherId: string, courseName: string): Promise<string> => {
+/**
+ * @param teacherId 老師 UID
+ * @param courseName 課程名稱
+ * @param customCode 老師自定義的邀請碼
+ */
+export const createCourse = async (teacherId: string, courseName: string, customCode: string): Promise<string> => {
   const courseRef = collection(db, 'courses');
-  const newCourse = {
+
+  const q = query(courseRef, where('inviteCode', '==', customCode));
+  const snapshot = await getDocs(q);
+  
+  if (!snapshot.empty) {
+    throw new Error("此邀請碼已被其他課程使用，請換一個。");
+  }
+
+  const newCourseData = {
     name: courseName,
     teacherId: teacherId,
-    inviteCode: generateInviteCode(),
+    inviteCode: customCode, 
     createdAt: serverTimestamp(),
   };
-  const docRef = await addDoc(courseRef, newCourse);
+
+  const docRef = await addDoc(courseRef, newCourseData);
   return docRef.id;
 };
 
-// 新增：刪除課程功能
 export const deleteCourse = async (courseId: string) => {
   try {
     await deleteDoc(doc(db, 'courses', courseId));

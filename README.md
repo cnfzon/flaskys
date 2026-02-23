@@ -42,7 +42,7 @@
 
 ### 1. 安裝依賴
 
-『`bash
+```bash
 cd my-teaching-app
 pnpm install
 ```
@@ -112,9 +112,9 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
 ### 5. 運行開發伺服器
 
-『`bash
+```bash
 pnpm dev
-```
+
 造訪 [http://localhost:3000](http://localhost:3000)
 ```
 

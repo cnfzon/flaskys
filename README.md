@@ -1,62 +1,62 @@
-# 教学网站系统
+# 教學網站系統
 
-基于 Next.js、TypeScript、Tailwind CSS 和 Firebase 开发的教学管理系统。
+基於 Next.js、TypeScript、Tailwind CSS 和 Firebase 開發的教學管理系統。
 
 ## 功能特性
 
-### 身份验证
+### 身份驗證
 - Firebase Authentication 集成
-- Email 验证（仅限 @*.org.tw 域名）
-- 学生/教师角色区分
-- 路由保护中间件
+- Email 驗證（僅限 @*.org.tw 網域）
+- 學生/教師角色區分
+- 路由保護中介軟體
 
-### 学生功能
-- 个人成绩仪表板
-- 累积成绩折线图（使用 recharts）
-- 匿名排行榜（Top 3 / Top 10 切换）
-- PR 值计算
-- 期末考权重显示
+### 學生功能
+- 個人成績儀表板
+- 累積成績折線圖（使用 recharts）
+- 匿名排行榜（Top 3 / Top 10 切換）
+- PR 值計算
+- 期末考權重顯示
 
-### 教师功能
-- 班级管理
-- CSV 成绩导入
-- 成绩分布长条图
-- 学生成绩编辑
-- 高风险学生识别（期末权重过高）
+### 教師功能
+- 班級管理
+- CSV 成績導入
+- 成績分佈長條圖
+- 學生成績編輯
+- 高風險學生識別（期末權重過高）
 
-### 教学模式说明
-- 成绩组成说明
-- 期末考策略可视化
+### 教學模式說明
+- 成績組成說明
+- 期末考策略視覺化
 
-## 技术栈
+## 技術堆疊
 
 - **框架**: Next.js 16 (App Router)
-- **语言**: TypeScript
-- **样式**: Tailwind CSS
-- **后端**: Firebase (Auth + Firestore)
-- **图表**: Recharts
-- **图标**: Lucide React
+- **語言**: TypeScript
+- **樣式**: Tailwind CSS
+- **後端**: Firebase (Auth + Firestore)
+- **圖表**: Recharts
+- **圖標**: Lucide React
 - **CSV 解析**: PapaParse
 
-## 安装与设置
+## 安裝與設定
 
-### 1. 安装依赖
+### 1. 安裝依賴
 
-```bash
+『`bash
 cd my-teaching-app
 pnpm install
 ```
 
-### 2. 配置 Firebase
+### 2. 設定 Firebase
 
-1. 在 Firebase Console 创建新项目
-2. 启用 Authentication（Email/Password）
-3. 创建 Firestore 数据库
-4. 获取 Firebase 配置信息
+1. 在 Firebase Console 建立新項目
+2. 啟用 Authentication（Email/Password）
+3. 建立 Firestore 資料庫
+4. 取得 Firebase 設定信息
 
-### 3. 环境变量
+### 3. 環境變數
 
-创建 `.env.local` 文件：
+建立 `.env.local` 檔案：
 
 ```env
 NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
@@ -67,109 +67,109 @@ NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 ```
 
-### 4. Firestore 数据结构
+### 4. Firestore 資料結構
 
 #### users 集合
 ```typescript
 {
-  uid: string;
-  email: string;
-  role: 'student' | 'teacher';
-  displayName?: string;
-  createdAt: Timestamp;
+ uid: string;
+ email: string;
+ role: 'student' | 'teacher';
+ displayName?: string;
+ createdAt: Timestamp;
 }
 ```
 
 #### students 集合
 ```typescript
 {
-  id: string;
-  studentId: string;
-  courseId: string;
-  displayName?: string;
-  email?: string;
-  scores: ScoreRecord[];
-  totalPoints: number;
-  currentGrade?: string;
-  finalExamWeight: number;
-  prValue?: number;
-  rank?: number;
+ id: string;
+ studentId: string;
+ courseId: string;
+ displayName?: string;
+ email?: string;
+ scores: ScoreRecord[];
+ totalPoints: number;
+ currentGrade?: string;
+ finalExamWeight: number;
+ prValue?: number;
+ rank?: number;
 }
 ```
 
 #### courses 集合
 ```typescript
 {
-  id: string;
-  name: string;
-  code: string;
-  semester: string;
-  teacherId: string;
-  students: string[];
-  createdAt: Timestamp;
+ id: string;
+ name: string;
+ code: string;
+ semester: string;
+ teacherId: string;
+ students: string[];
+ createdAt: Timestamp;
 }
 ```
 
-### 5. 运行开发服务器
+### 5. 運行開發伺服器
 
-```bash
+『`bash
 pnpm dev
 ```
 
-访问 [http://localhost:3000](http://localhost:3000)
+造訪 [http://localhost:3000](http://localhost:3000)
 
-## 项目结构
+## 專案結構
 
 ```
 my-teaching-app/
 ├── app/
-│   ├── dashboard/
-│   │   ├── student/      # 学生仪表板
-│   │   └── teacher/       # 教师仪表板
-│   ├── login/            # 登录/注册页面
-│   ├── methodology/      # 教学模式说明
-│   ├── layout.tsx        # 根布局
-│   └── page.tsx          # 首页（重定向到登录）
+│ ├── dashboard/
+│ │ ├── student/ # 學生儀表板
+│ │ └── teacher/ # 教師儀表板
+│ ├── login/ # 登入/註冊頁面
+│ ├── methodology/ # 教學模式說明
+│ ├── layout.tsx # 根佈局
+│ └── page.tsx # 首頁（重新導向登入）
 ├── components/
-│   ├── auth/
-│   │   └── AuthForm.tsx  # 认证表单组件
-│   └── Header.tsx        # 导航头部
+│ ├── auth/
+│ │ └── AuthForm.tsx # 認證表單元件
+│ └── Header.tsx # 導航頭部
 ├── lib/
-│   ├── firebase/
-│   │   ├── config.ts      # Firebase 配置
-│   │   ├── auth.ts        # 认证相关函数
-│   │   ├── students.ts    # 学生数据操作
-│   │   └── courses.ts     # 课程数据操作
-│   └── utils/
-│       ├── csvParser.ts   # CSV 解析工具
-│       └── calculations.ts # 计算工具函数
+│ ├── firebase/
+│ │ ├── config.ts # Firebase 配置
+│ │ ├── auth.ts # 認證相關函數
+│ │ ├── students.ts # 學生資料操作
+│ │ └── courses.ts # 課程資料操作
+│ └── utils/
+│ ├── csvParser.ts # CSV 解析工具
+│ └── calculations.ts # 計算工具函數
 ├── types/
-│   └── index.ts          # TypeScript 类型定义
-└── middleware.ts         # Next.js 中间件（路由保护）
+│ └── index.ts # TypeScript 類型定義
+└── middleware.ts # Next.js 中介軟體（路由保護）
 ```
 
-## 使用说明
+## 使用說明
 
-### 注册账号
-1. 访问 `/login` 页面
-2. 点击 "Sign up" 切换到注册模式
-3. 选择角色（学生/教师）
-4. 输入 @*.org.tw 邮箱和密码
-5. 注册成功后自动跳转到对应仪表板
+### 註冊帳號
+1. 造訪 `/login` 頁面
+2. 點選 "Sign up" 切換到註冊模式
+3. 選擇角色（學生/教師）
+4. 輸入 @*.org.tw 信箱和密碼
+5. 註冊成功後自動跳到對應儀表板
 
-### 学生功能
-- 查看个人累积成绩
-- 查看成绩趋势图
-- 查看匿名排行榜
-- 查看期末考权重
+### 學生功能
+- 查看個人累積成績
+- 查看成績趨勢圖
+- 看匿名排行榜
+- 查看期末考權重
 
-### 教师功能
-- 上传 CSV 文件更新学生成绩
-- 查看班级成绩分布
-- 编辑学生成绩
-- 识别高风险学生
+### 教師功能
+- 上傳 CSV 檔案更新學生成績
+- 查看班級成績分佈
+- 編輯學生成績
+- 識別高風險學生
 
-### CSV 格式示例
+### CSV 格式範例
 
 ```csv
 studentId,week,points,totalPoints
@@ -178,13 +178,13 @@ studentId,week,points,totalPoints
 841005,1,12,12
 ```
 
-## 开发注意事项
+## 開發注意事項
 
-1. **Email 验证**: 系统仅接受 @*.org.tw 域名的邮箱
-2. **路由保护**: 未登录用户只能访问 `/login` 页面
-3. **角色权限**: 学生和教师访问不同的仪表板
-4. **数据匿名化**: 排行榜中的学号会被匿名化处理
+1. **Email 驗證**: 系統僅接受 @*.org.tw 網域的信箱
+2. **路由保護**: 未登入使用者只能存取 `/login` 頁面
+3. **角色權限**: 學生和教師存取不同的儀表板
+4. **資料匿名化**: 排行榜中的學號會被匿名化處理
 
-## 许可证
+## 許可證
 
 MIT License

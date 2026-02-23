@@ -115,8 +115,8 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 『`bash
 pnpm dev
 ```
-
 造訪 [http://localhost:3000](http://localhost:3000)
+```
 
 ## 使用說明
 

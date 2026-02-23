@@ -118,36 +118,6 @@ pnpm dev
 
 造訪 [http://localhost:3000](http://localhost:3000)
 
-## 專案結構
-
-```
-my-teaching-app/
-├── app/
-│ ├── dashboard/
-│ │ ├── student/ # 學生儀表板
-│ │ └── teacher/ # 教師儀表板
-│ ├── login/ # 登入/註冊頁面
-│ ├── methodology/ # 教學模式說明
-│ ├── layout.tsx # 根佈局
-│ └── page.tsx # 首頁（重新導向登入）
-├── components/
-│ ├── auth/
-│ │ └── AuthForm.tsx # 認證表單元件
-│ └── Header.tsx # 導航頭部
-├── lib/
-│ ├── firebase/
-│ │ ├── config.ts # Firebase 配置
-│ │ ├── auth.ts # 認證相關函數
-│ │ ├── students.ts # 學生資料操作
-│ │ └── courses.ts # 課程資料操作
-│ └── utils/
-│ ├── csvParser.ts # CSV 解析工具
-│ └── calculations.ts # 計算工具函數
-├── types/
-│ └── index.ts # TypeScript 類型定義
-└── middleware.ts # Next.js 中介軟體（路由保護）
-```
-
 ## 使用說明
 
 ### 註冊帳號

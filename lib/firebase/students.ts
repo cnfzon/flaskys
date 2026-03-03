@@ -1,5 +1,6 @@
 import {
   collection,
+  writeBatch,
   doc,
   getDoc,
   getDocs,
@@ -9,6 +10,7 @@ import {
   updateDoc,
   setDoc,
   serverTimestamp,
+  increment
 } from 'firebase/firestore';
 import { db } from './config';
 import { Student, ScoreRecord } from '@/types';
@@ -133,4 +135,47 @@ export const getLeaderboard = async (
   }
 
   return topStudents;
+};
+
+export const batchUpdateStudents = async (data: any[]) => {
+  const batch = writeBatch(db);
+  
+  data.forEach((item) => {
+    if (!item.studentId) return;
+
+    const studentRef = doc(db, 'students', item.studentId);
+    
+    // 建立動態的歷史紀錄欄位 Key，例如 history.date_0304
+    const historyKey = item.dateLabel ? `history.date_${item.dateLabel}` : null;
+
+    const updateData: any = {
+      studentId: item.studentId,
+      name: item.name,
+      className: item.className || '',
+      courseId: item.courseId,
+      totalPoints: increment(item.points || 0),
+      updatedAt: serverTimestamp()
+    };
+
+    if (historyKey) {
+      updateData[historyKey] = item.points || 0;
+    }
+
+    batch.set(studentRef, updateData, { merge: true });
+  });
+
+  return await batch.commit();
+};
+
+export const getCourseStudents = async (courseId: string) => {
+  const q = query(
+    collection(db, 'students'), 
+    where('courseId', '==', courseId),
+    orderBy('totalPoints', 'desc')
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({ 
+    id: doc.id, 
+    ...doc.data() 
+  })) as Student[];
 };

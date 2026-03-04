@@ -1,15 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { 
   collection, 
   query, 
   where, 
   getDocs, 
-  orderBy,
-  doc,
-  getDoc
+  orderBy 
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 import { calculatePRValue } from '@/lib/utils/calculations';
@@ -36,7 +34,8 @@ import {
   AreaChart,
 } from 'recharts';
 
-export default function TeacherSimulator() {
+// 將原本的所有邏輯封裝在內部組件中
+function SimulatorContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const courseId = searchParams.get('courseId');
@@ -44,7 +43,6 @@ export default function TeacherSimulator() {
   const [allEnrollments, setAllEnrollments] = useState<any[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // 修正：新增 3 與 5 的選項
   const [rankLimit, setRankLimit] = useState<'3' | '5' | '10' | 'all'>('10');
 
   const maxPoints = 100;
@@ -96,7 +94,7 @@ export default function TeacherSimulator() {
     }, 0);
     const fw = Math.max(0, 100 - sumWithoutFinal);
 
-    const sortedHistory = [...rawHistory].sort((a, b) => {
+    const sortedHistory = [...rawHistory].sort((a: any, b: any) => {
       const parseToTime = (dateStr: string) => {
         if (!dateStr || typeof dateStr !== 'string') return 0;
         if (dateStr.includes('/')) {
@@ -111,7 +109,7 @@ export default function TeacherSimulator() {
     });
 
     let cumulativeSum = 0;
-    const cData = sortedHistory.map((item) => {
+    const cData = sortedHistory.map((item: any) => {
       cumulativeSum += (Number(item.points) || 0);
       return {
         displayDate: item.date,
@@ -129,7 +127,22 @@ export default function TeacherSimulator() {
     return allEnrollments.slice(0, parseInt(rankLimit));
   }, [allEnrollments, rankLimit]);
 
-  if (loading) return <div className="flex items-center justify-center min-h-screen dark:bg-[#121517] dark:text-white font-mono uppercase tracking-widest text-xs">Initializing Simulator...</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-screen dark:bg-[#121517] dark:text-white font-mono uppercase tracking-widest text-xs">
+      Initializing Simulator...
+    </div>
+  );
+
+  if (!courseId || allEnrollments.length === 0) {
+    return (
+      <div className="min-h-screen bg-background-light dark:bg-background-dark flex flex-col items-center justify-center p-4">
+        <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+        <h2 className="text-2xl font-bold dark:text-white">未找到課程數據</h2>
+        <p className="text-gray-500 mt-2 text-center">請確認 URL 是否包含正確的 courseId</p>
+        <button onClick={() => router.back()} className="mt-6 px-6 py-2 bg-primary text-white rounded-lg font-bold">返回教師端</button>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background-light dark:bg-background-dark text-[#121517] min-h-screen flex flex-col font-sans transition-colors duration-300">
@@ -142,12 +155,11 @@ export default function TeacherSimulator() {
             <div className="p-2 bg-primary/10 rounded-lg text-primary"><Eye className="w-5 h-5" /></div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-tighter text-primary">Simulator Mode</p>
-              <h2 className="text-sm font-bold dark:text-white">正在模擬學生帳號視角</h2>
+              <h2 className="text-sm font-bold dark:text-white font-sans">正在模擬學生帳號視角</h2>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
-            {/* 離開按鈕 */}
             <button 
               onClick={() => router.push('/dashboard/teacher')}
               className="flex items-center gap-2 px-3 py-1.5 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-200 dark:border-red-900/30 rounded-xl text-xs font-black uppercase transition-all hover:bg-red-100"
@@ -176,12 +188,20 @@ export default function TeacherSimulator() {
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">
+            <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight font-sans">
               {enrollment?.courseName || 'Course Dashboard'}
             </h1>
-            <p className="text-[#677683] text-base flex items-center gap-2">
+            <p className="text-[#677683] text-base flex items-center gap-2 font-sans">
               <Users className="w-4 h-4" /> Viewing Student ID: <span className="font-bold text-primary">{selectedStudentId}</span>
             </p>
+          </div>
+          <div className="flex items-center gap-3 opacity-30 cursor-not-allowed grayscale">
+            <button className="flex items-center gap-2 rounded-lg h-10 px-4 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] text-[#121517] dark:text-white text-sm font-bold shadow-sm">
+              <Plus className="w-5 h-5" /> Enroll New
+            </button>
+            <button className="flex items-center gap-2 rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold shadow-md">
+              <Download className="w-5 h-5" /> My Report
+            </button>
           </div>
         </div>
 
@@ -205,7 +225,7 @@ export default function TeacherSimulator() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 圖表 */}
+          {/* Cumulative Progress 圖表 */}
           <div className="lg:col-span-2 bg-white dark:bg-[#1a222c] border border-[#e5e7eb] dark:border-gray-700 rounded-xl p-8 shadow-sm">
             <h3 className="text-[#121517] dark:text-white text-lg font-black mb-10 uppercase tracking-tight">Cumulative Progress</h3>
             <div className="h-80 w-full min-h-80">
@@ -214,14 +234,25 @@ export default function TeacherSimulator() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} opacity={0.1} />
                   <XAxis dataKey="displayDate" stroke="#64748b" fontSize={11} tickMargin={12} axisLine={false} tickLine={false} />
                   <YAxis stroke="#64748b" fontSize={12} domain={[0, maxPoints]} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} />
-                  <Area type="monotone" dataKey="cumulativePoints" stroke="#6ca7da" fill="#6ca7da" fillOpacity={0.1} strokeWidth={3} dot={{r: 4, fill: '#6ca7da', strokeWidth: 0}} activeDot={{r: 6}} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="cumulativePoints" 
+                    stroke="#6ca7da" 
+                    fill="#6ca7da" 
+                    fillOpacity={0.1} 
+                    strokeWidth={3} 
+                    dot={{r: 4, fill: '#6ca7da', strokeWidth: 0}} 
+                    activeDot={{r: 6}} 
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Class Rankings - 修正排名選項與樣式 */}
+          {/* Class Rankings */}
           <div className="bg-white dark:bg-[#1a222c] border border-[#e5e7eb] dark:border-gray-700 rounded-xl p-6 shadow-sm flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-[#121517] dark:text-white text-lg font-black uppercase tracking-tight">Class Rankings</h3>
@@ -241,7 +272,6 @@ export default function TeacherSimulator() {
               {visibleLeaderboard.map((lbStudent, index) => {
                 const isCurrent = (lbStudent.studentId || lbStudent.id) === selectedStudentId;
                 
-                // 復刻前三名金銀銅樣式
                 const getRankCircleClass = (i: number) => {
                   if (i === 0) return "bg-yellow-400 text-white shadow-lg shadow-yellow-400/20"; 
                   if (i === 1) return "bg-slate-300 text-white shadow-lg shadow-slate-300/20";   
@@ -256,9 +286,10 @@ export default function TeacherSimulator() {
                         {index + 1}
                       </div>
                       <div className="flex flex-col">
-                        <span className={`text-xs ${isCurrent ? 'font-black text-primary' : 'font-bold text-gray-700 dark:text-gray-300'}`}>
+                        <span className={`text-xs ${isCurrent ? 'font-black text-primary font-sans' : 'font-bold text-gray-700 dark:text-gray-300 font-sans'}`}>
                           {isCurrent ? (lbStudent.studentName || lbStudent.name || 'YOU') : 'Student'}
                         </span>
+                        {isCurrent && <span className="text-[9px] text-primary/60 font-black uppercase tracking-tighter">Current View</span>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -273,5 +304,17 @@ export default function TeacherSimulator() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function TeacherSimulator() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen dark:bg-[#121517] dark:text-white">
+        Loading Simulator Environment...
+      </div>
+    }>
+      <SimulatorContent />
+    </Suspense>
   );
 }

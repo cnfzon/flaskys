@@ -5,20 +5,22 @@ import { useRouter } from 'next/navigation';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
 import { 
-  writeBatch, 
-  serverTimestamp,
-  doc,
   collection,
   query,
   where,
   getDocs,
-  increment 
 } from 'firebase/firestore';
 
 import { getCoursesByTeacher } from '@/lib/firebase/courses';
 import { parseCSV } from '@/lib/utils/csvParser';
 import Header from '@/components/Header';
 import ManageCoursesModal from '@/components/ManageCoursesModal';
+
+// 引入你修正後的 students 邏輯
+import { 
+  getCourseStudents,
+  batchUpdateStudents 
+} from "@/lib/firebase/students";
 
 import {
   Upload,
@@ -30,7 +32,8 @@ import {
   AlertTriangle,
   BarChart3,
   Loader2,
-  Settings
+  Settings,
+  Eye // 新增圖示用於模擬器
 } from 'lucide-react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -48,6 +51,7 @@ export default function TeacherDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('totalPoints');
 
+  // 載入課程資料
   const refreshCourses = async (userId: string) => {
     try {
       const teacherCourses = await getCoursesByTeacher(userId);
@@ -72,23 +76,13 @@ export default function TeacherDashboard() {
     return () => unsubscribe();
   }, [router]);
 
+  // 載入該課程的學生成績
   const fetchClassData = async (courseId: string) => {
     if (!courseId) return;
     setLoading(true);
     try {
-      const q = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
-      const querySnapshot = await getDocs(q);
-      const studentList = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          totalPoints: Number(data.totalPoints || 0),
-          studentId: data.studentId || "Unknown",
-          name: data.name || data.studentId
-        };
-      });
-      setStudents(studentList);
+      const data = await getCourseStudents(courseId);
+      setStudents(data);
     } catch (error) {
       console.error("抓取數據失敗:", error);
     } finally {
@@ -100,6 +94,7 @@ export default function TeacherDashboard() {
     if (selectedCourse) fetchClassData(selectedCourse);
   }, [selectedCourse]);
 
+  // 統計邏輯
   const stats = useMemo(() => {
     const total = students.length;
     if (total === 0) return { avg: "0.0", total: 0, risk: 0 };
@@ -139,8 +134,8 @@ export default function TeacherDashboard() {
     const file = event.target.files?.[0];
     if (!selectedCourse || !file) return;
 
-    const dateInput = prompt("請輸入本次上傳日期 (例如 0304):", 
-      new Date().toLocaleDateString('zh-TW', {month:'2-digit', day:'2-digit'}).replace(/\//g,'')
+    const dateInput = prompt("請輸入本次成績標籤 (例如: 9/15, part 1):", 
+      new Date().toLocaleDateString('zh-TW', {month:'2-digit', day:'2-digit'})
     );
     if (!dateInput) return;
 
@@ -150,63 +145,55 @@ export default function TeacherDashboard() {
       const rawRows = parseCSV(text);
       if (rawRows.length < 2) throw new Error("檔案格式錯誤或內容為空");
 
-      const headers = rawRows[0].map(h => h.trim());
-      const batch = writeBatch(db);
+      // 1. 正規化標題列 (全小寫、移除空白與 BOM)
+      const headers = rawRows[0].map(h => h.trim().toLowerCase().replace(/[\uFEFF\s\-_.]/g, ''));
+      
+      // 2. 尋找 ID 和 Name 的位置
+      const idIdx = headers.findIndex(h => ['id', 'studentid', '學號', 'uid'].includes(h));
+      const nameIdx = headers.findIndex(h => ['name', '姓名', 'studentname'].includes(h));
 
-      const idIdx = headers.findIndex(h => ['ID', 'studentId', '學號'].includes(h));
-      const nameOrScoreIdx = headers.findIndex(h => ['Name', '姓名', '分數'].includes(h));
-      const classIdx = headers.findIndex(h => ['Class', '班級', 'className'].includes(h));
-
-      if (idIdx === -1) throw new Error("找不到學號欄位 (ID/學號)");
-
-      for (let i = 1; i < rawRows.length; i++) {
-        const row = rawRows[i];
-        if (!row || row.length < 1) continue;
-
-        const studentId = row[idIdx]?.trim() || "";
-        if (!studentId) continue;
-
-        // 修正重點：嚴格處理 Name 欄位，確保不出現 undefined
-        const rawNameValue = (nameOrScoreIdx !== -1 && row[nameOrScoreIdx]) ? row[nameOrScoreIdx].trim() : "";
-        const className = (classIdx !== -1 && row[classIdx]) ? row[classIdx].trim() : "";
-
-        const numericValue = parseFloat(rawNameValue);
-        const isNum = !isNaN(numericValue) && rawNameValue !== "";
-        
-        let finalName = "";
-        let pointsToAdd = 0;
-
-        // 如果 Name 是數字或是空的，統一預設名字為學號
-        if (isNum || rawNameValue === "") {
-          finalName = studentId; 
-          pointsToAdd = isNum ? numericValue : 0;
-        } else {
-          finalName = rawNameValue;
-          pointsToAdd = 0;
-        }
-
-        const docRef = doc(db, 'enrollments', `${selectedCourse}_${studentId}`);
-        
-        batch.set(docRef, {
-          courseId: selectedCourse,
-          studentId: studentId,
-          name: finalName, // 確保這裡絕對不是 undefined
-          className: className,
-          totalPoints: increment(pointsToAdd),
-          [`history.date_${dateInput}`]: pointsToAdd,
-          lastUpdated: serverTimestamp()
-        }, { merge: true });
+      if (idIdx === -1) {
+        throw new Error(`辨識失敗！CSV 必須包含「ID」欄位。\n目前偵測到標題：${rawRows[0].join(', ')}`);
       }
 
-      await batch.commit();
-      alert(`匯入成功！日期: ${dateInput}`);
+      // 3. 尋找分數位置 (優先找標題，找不到則找 Name 後面一格)
+      let scoreIdx = headers.findIndex(h => ['points', 'score', '分數', 'pts'].includes(h));
+      
+      // 如果標題沒寫 Points，且我們知道 Name 的位置，則鎖定 Name 後面那一欄
+      if (scoreIdx === -1 && nameIdx !== -1) {
+        scoreIdx = nameIdx + 1;
+      }
+
+      const processedData = rawRows.slice(1).map((row, lineNum) => {
+        const studentId = row[idIdx]?.trim();
+        if (!studentId) return null;
+
+        // 抓取分數：如果該列長度足夠則取值，否則預設 0
+        const rawScore = (scoreIdx !== -1 && row[scoreIdx]) ? row[scoreIdx].trim() : "0";
+        const numericScore = parseFloat(rawScore.replace(/,/g, ''));
+        
+        return {
+          studentId,
+          courseId: selectedCourse,
+          name: nameIdx !== -1 ? (row[nameIdx]?.trim() || studentId) : studentId,
+          points: isNaN(numericScore) ? 0 : numericScore,
+          dateLabel: dateInput
+        };
+      }).filter(Boolean);
+
+      if (processedData.length === 0) throw new Error("沒有偵測到任何有效的學生資料");
+
+      // 呼叫 Firestore 更新
+      await batchUpdateStudents(processedData);
+      
+      alert(`匯入成功！共更新 ${processedData.length} 筆資料。`);
       fetchClassData(selectedCourse);
     } catch (error: any) {
-      console.error("Batch error:", error);
-      alert("匯入失敗: " + error.message);
+      console.error("CSV Upload Error:", error);
+      alert(error.message);
     } finally {
       setLoading(false);
-      event.target.value = '';
+      if (event.target) event.target.value = '';
     }
   };
 
@@ -223,6 +210,7 @@ export default function TeacherDashboard() {
       />
 
       <main className="max-w-7xl mx-auto p-6 flex flex-col gap-8">
+        {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-end gap-4">
           <div>
             <h1 className="text-3xl font-black dark:text-white">班級成績管理</h1>
@@ -243,7 +231,24 @@ export default function TeacherDashboard() {
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
 
-            <button onClick={() => setIsModalOpen(true)} className="p-3 bg-gray-100 dark:bg-gray-800 rounded-xl text-gray-500 hover:text-primary border dark:border-gray-700">
+            {/* 模擬器跳轉按鈕 */}
+            <button 
+              onClick={() => {
+                if (!selectedCourse) {
+                  alert("請先選擇一個課程");
+                  return;
+                }
+                router.push(`/dashboard/teacher/simulator?courseId=${selectedCourse}`);
+              }}
+              className="p-3 bg-gray-900 text-white dark:bg-white dark:text-black rounded-xl hover:opacity-80 transition-all flex items-center gap-2 text-sm font-bold"
+            >
+              <Eye size={18} /> 模擬學生端
+            </button>
+
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="p-3 bg-gray-100 dark:bg-gray-800 rounded-xl text-gray-500 hover:text-primary transition-colors border dark:border-gray-700"
+            >
               <Settings size={20} />
             </button>
 
@@ -254,7 +259,7 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* 數據指標 */}
+        {/* 數據指標卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-[#1a222c] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 text-gray-400 mb-2 font-black uppercase text-[10px] tracking-widest">
@@ -268,7 +273,7 @@ export default function TeacherDashboard() {
             </div>
             <p className="text-4xl font-black dark:text-white">{stats.total}</p>
           </div>
-          <div className="bg-white dark:bg-[#1a222c] p-6 rounded-2xl shadow-sm border-l-4 border-l-[#FF5B59] border-gray-100 dark:border-gray-700">
+          <div className="bg-white dark:bg-[#1a222c] p-6 rounded-2xl shadow-sm border-l-4 border-l-[#FF5B59] border-y border-r border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 text-[#FF5B59] mb-2 font-black uppercase text-[10px] tracking-widest">
               <AlertTriangle size={16} /> At-Risk Students
             </div>
@@ -276,30 +281,44 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* 圖表 */}
+        {/* 成績分布圖表 */}
         <div className="bg-white dark:bg-[#1a222c] p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
+          <div className="flex items-center gap-2 mb-8 text-gray-400">
+            <BarChart3 size={18} />
+            <h3 className="text-xs font-black uppercase tracking-widest">Score Distribution</h3>
+          </div>
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={distribution}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis dataKey="range" fontSize={11} fontWeight="bold" axisLine={false} tickLine={false} />
                 <YAxis axisLine={false} tickLine={false} fontSize={12} />
-                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '12px', border: 'none'}} />
+                <Tooltip cursor={{fill: 'transparent'}} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px rgba(0,0,0,0.05)'}} />
                 <Bar dataKey="count" fill="#6BA6DA" radius={[6, 6, 0, 0]} barSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* 表格 */}
+        {/* 學生名單列表 */}
         <div className="bg-white dark:bg-[#1a222c] rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden mb-12">
           <div className="p-6 border-b dark:border-gray-800 flex justify-between items-center bg-gray-50/30 dark:bg-gray-800/20">
             <h3 className="text-xs font-black uppercase tracking-widest dark:text-white">Student Roster</h3>
             <div className="flex gap-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-                <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-xs outline-none dark:text-white w-48 focus:ring-2 focus:ring-primary/20" />
+                <input 
+                  type="text" 
+                  placeholder="Search ID..." 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                  className="pl-9 pr-4 py-2 bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl text-xs outline-none dark:text-white w-48 focus:ring-2 focus:ring-primary/20" 
+                />
               </div>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="text-[10px] font-bold bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl px-3 outline-none dark:text-white">
+                <option value="totalPoints">Sort by Rank</option>
+                <option value="studentId">Sort by ID</option>
+              </select>
             </div>
           </div>
           <table className="w-full text-left">
@@ -325,7 +344,9 @@ export default function TeacherDashboard() {
                       </div>
                     </td>
                     <td className="px-8 py-5 text-center font-black text-xl">
-                      <span className={isAtRisk ? 'text-[#FF5B59]' : 'text-primary'}>{s.totalPoints}</span>
+                      <span className={isAtRisk ? 'text-[#FF5B59]' : 'text-primary'}>
+                        {s.totalPoints}
+                      </span>
                     </td>
                     <td className="px-8 py-5 text-center">
                       <span className={`px-3 py-1 rounded-full text-[9px] font-black ${isAtRisk ? 'bg-red-100 text-[#FF5B59]' : 'bg-green-100 text-green-600'}`}>
@@ -341,8 +362,9 @@ export default function TeacherDashboard() {
             </tbody>
           </table>
           {students.length === 0 && !loading && (
-            <div className="p-20 text-center">
-              <p className="text-gray-400 text-sm font-medium italic">Waiting for data synchronization...</p>
+            <div className="p-20 text-center flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 text-gray-200 animate-spin" />
+              <p className="text-gray-400 text-sm font-medium italic">Waiting for data...</p>
             </div>
           )}
         </div>

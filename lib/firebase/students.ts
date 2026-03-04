@@ -14,22 +14,30 @@ import {
 } from 'firebase/firestore';
 import { db } from './config';
 import { Student, ScoreRecord } from '@/types';
+import { arrayUnion } from 'firebase/firestore';
 
-export const getStudentData = async (studentId: string): Promise<Student | null> => {
-  const studentDoc = await getDoc(doc(db, 'students', studentId));
-  if (!studentDoc.exists()) {
-    return null;
-  }
+export const getStudentData = async (courseId: string, studentId: string) => {
+  const enrollmentId = `${courseId}_${studentId}`;
+  const enrollmentRef = doc(db, 'enrollments', enrollmentId);
+  const studentDoc = await getDoc(enrollmentRef);
+  
+  if (!studentDoc.exists()) return null;
 
-  const data = studentDoc.data();
+  // 抓取子集合中的所有歷史成績
+  const scoresSnapshot = await getDocs(
+    query(collection(enrollmentRef, 'scores'), orderBy('createdAt', 'desc'))
+  );
+  
+  const scores = scoresSnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
   return {
     id: studentDoc.id,
-    ...data,
-    scores: data.scores?.map((s: any) => ({
-      ...s,
-      timestamp: s.timestamp?.toDate() || new Date(),
-    })) || [],
-  } as Student;
+    ...studentDoc.data(),
+    scores
+  };
 };
 
 export const getStudentsByCourse = async (courseId: string): Promise<Student[]> => {
@@ -140,42 +148,35 @@ export const getLeaderboard = async (
 export const batchUpdateStudents = async (data: any[]) => {
   const batch = writeBatch(db);
   
-  data.forEach((item) => {
-    if (!item.studentId) return;
+  for (const item of data) {
+    if (!item.studentId || !item.courseId) continue;
 
-    const studentRef = doc(db, 'students', item.studentId);
-    
-    // 建立動態的歷史紀錄欄位 Key，例如 history.date_0304
-    const historyKey = item.dateLabel ? `history.date_${item.dateLabel}` : null;
+    // 依照你的截圖 ID 格式：courseId_studentId
+    const enrollmentId = `${item.courseId}_${item.studentId}`;
+    const enrollmentRef = doc(db, 'enrollments', enrollmentId);
 
-    const updateData: any = {
-      studentId: item.studentId,
-      name: item.name,
-      className: item.className || '',
-      courseId: item.courseId,
-      totalPoints: increment(item.points || 0),
-      updatedAt: serverTimestamp()
+    const newHistoryRecord = {
+      date: item.dateLabel || '未分類',
+      points: Number(item.points) || 0
     };
 
-    if (historyKey) {
-      updateData[historyKey] = item.points || 0;
-    }
-
-    batch.set(studentRef, updateData, { merge: true });
-  });
+    batch.set(enrollmentRef, {
+      courseId: item.courseId,
+      studentId: item.studentId,
+      name: item.name,
+      // 核心：使用 increment 自動加總總分，不需手動讀取舊資料
+      totalPoints: increment(Number(item.points) || 0),
+      // 核心：使用 arrayUnion 將本次日期與分數推入歷史陣列，Simulator 才能畫圖
+      weeklyHistory: arrayUnion(newHistoryRecord),
+      lastUpdated: serverTimestamp()
+    }, { merge: true });
+  }
 
   return await batch.commit();
 };
 
 export const getCourseStudents = async (courseId: string) => {
-  const q = query(
-    collection(db, 'students'), 
-    where('courseId', '==', courseId),
-    orderBy('totalPoints', 'desc')
-  );
+  const q = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
   const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ 
-    id: doc.id, 
-    ...doc.data() 
-  })) as Student[];
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

@@ -145,29 +145,20 @@ export const getLeaderboard = async (
   return topStudents;
 };
 
-export const batchUpdateStudents = async (data: any[]) => {
+export const batchUpdateStudentsMatrix = async (data: any[]) => {
   const batch = writeBatch(db);
   
   for (const item of data) {
-    if (!item.studentId || !item.courseId) continue;
-
-    // 依照你的截圖 ID 格式：courseId_studentId
     const enrollmentId = `${item.courseId}_${item.studentId}`;
     const enrollmentRef = doc(db, 'enrollments', enrollmentId);
 
-    const newHistoryRecord = {
-      date: item.dateLabel || '未分類',
-      points: Number(item.points) || 0
-    };
-
+    // 直接覆蓋 totalPoints 與 weeklyHistory，確保資料與 CSV 完全一致
     batch.set(enrollmentRef, {
       courseId: item.courseId,
       studentId: item.studentId,
       name: item.name,
-      // 核心：使用 increment 自動加總總分，不需手動讀取舊資料
-      totalPoints: increment(Number(item.points) || 0),
-      // 核心：使用 arrayUnion 將本次日期與分數推入歷史陣列，Simulator 才能畫圖
-      weeklyHistory: arrayUnion(newHistoryRecord),
+      totalPoints: item.totalPoints, // 使用 CSV 重新計算的總分
+      weeklyHistory: item.weeklyHistory, // 使用 CSV 完整的歷史陣列
       lastUpdated: serverTimestamp()
     }, { merge: true });
   }

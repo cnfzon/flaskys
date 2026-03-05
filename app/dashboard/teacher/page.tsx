@@ -19,7 +19,7 @@ import ManageCoursesModal from '@/components/ManageCoursesModal';
 // 引入你修正後的 students 邏輯
 import { 
   getCourseStudents,
-  batchUpdateStudents 
+  batchUpdateStudentsMatrix 
 } from "@/lib/firebase/students";
 
 import {
@@ -134,63 +134,73 @@ export default function TeacherDashboard() {
     const file = event.target.files?.[0];
     if (!selectedCourse || !file) return;
 
-    const dateInput = prompt("請輸入本次成績標籤 (例如: 9/15, part 1):", 
-      new Date().toLocaleDateString('zh-TW', {month:'2-digit', day:'2-digit'})
-    );
-    if (!dateInput) return;
-
     setLoading(true);
     try {
       const text = await file.text();
       const rawRows = parseCSV(text);
+      
+      // 檢查是否有資料 (至少要有標題行與一行資料)
       if (rawRows.length < 2) throw new Error("檔案格式錯誤或內容為空");
 
-      // 1. 正規化標題列 (全小寫、移除空白與 BOM)
-      const headers = rawRows[0].map(h => h.trim().toLowerCase().replace(/[\uFEFF\s\-_.]/g, ''));
+      // 1. 正規化標題列，找出固定欄位 (學號、姓名) 的索引
+      const rawHeaders = rawRows[0].map(h => h.trim());
+      const normalizedHeaders = rawHeaders.map(h => h.toLowerCase().replace(/[\uFEFF\s\-_.]/g, ''));
       
-      // 2. 尋找 ID 和 Name 的位置
-      const idIdx = headers.findIndex(h => ['id', 'studentid', '學號', 'uid'].includes(h));
-      const nameIdx = headers.findIndex(h => ['name', '姓名', 'studentname'].includes(h));
+      const idIdx = normalizedHeaders.findIndex(h => ['id', 'studentid', '學號'].includes(h));
+      const nameIdx = normalizedHeaders.findIndex(h => ['name', '姓名'].includes(h));
 
-      if (idIdx === -1) {
-        throw new Error(`辨識失敗！CSV 必須包含「ID」欄位。\n目前偵測到標題：${rawRows[0].join(', ')}`);
-      }
+      if (idIdx === -1) throw new Error("找不到必要的「學號」或「ID」欄位");
 
-      // 3. 尋找分數位置 (優先找標題，找不到則找 Name 後面一格)
-      let scoreIdx = headers.findIndex(h => ['points', 'score', '分數', 'pts'].includes(h));
+      // 2. 定義成績欄位的起點：姓名 (Name) 之後的所有欄位
+      // 如果找不到姓名欄位，則從學號 (ID) 之後開始
+      const dataStartIdx = nameIdx !== -1 ? nameIdx + 1 : idIdx + 1;
       
-      // 如果標題沒寫 Points，且我們知道 Name 的位置，則鎖定 Name 後面那一欄
-      if (scoreIdx === -1 && nameIdx !== -1) {
-        scoreIdx = nameIdx + 1;
-      }
+      const dateColumns: { index: number; label: string }[] = [];
+      rawHeaders.forEach((header, index) => {
+        if (index >= dataStartIdx && header.length > 0) {
+          dateColumns.push({ index, label: header });
+        }
+      });
 
-      const processedData = rawRows.slice(1).map((row, lineNum) => {
+      // 3. 處理學生資料 (從索引 1 開始，跳過標題行)
+      const processedData = rawRows.slice(1).map((row) => {
+        // 檢查學號是否存在，避免處理空行
         const studentId = row[idIdx]?.trim();
         if (!studentId) return null;
 
-        // 抓取分數：如果該列長度足夠則取值，否則預設 0
-        const rawScore = (scoreIdx !== -1 && row[scoreIdx]) ? row[scoreIdx].trim() : "0";
-        const numericScore = parseFloat(rawScore.replace(/,/g, ''));
-        
+        const history: { date: string; points: number }[] = [];
+        let rowTotalPoints = 0;
+
+        // 遍歷所有偵測到的成績欄位
+        dateColumns.forEach(col => {
+          const rawValue = row[col.index]?.trim();
+          // 如果數值為空 (,,) 或非法字串，則計為 0 分
+          const pts = (rawValue && !isNaN(parseFloat(rawValue))) ? parseFloat(rawValue.replace(/,/g, '')) : 0;
+          
+          history.push({ 
+            date: col.label, // 直接使用標題作為 date
+            points: pts 
+          });
+          rowTotalPoints += pts;
+        });
+
         return {
           studentId,
           courseId: selectedCourse,
           name: nameIdx !== -1 ? (row[nameIdx]?.trim() || studentId) : studentId,
-          points: isNaN(numericScore) ? 0 : numericScore,
-          dateLabel: dateInput
+          totalPoints: Number(rowTotalPoints.toFixed(1)),
+          weeklyHistory: history
         };
       }).filter(Boolean);
 
-      if (processedData.length === 0) throw new Error("沒有偵測到任何有效的學生資料");
-
-      // 呼叫 Firestore 更新
-      await batchUpdateStudents(processedData);
+      // 4. 呼叫矩陣式批次更新 (請確保 students.ts 已更新 batchUpdateStudentsMatrix)
+      await batchUpdateStudentsMatrix(processedData);
       
-      alert(`匯入成功！共更新 ${processedData.length} 筆資料。`);
+      alert(`匯入成功！已同步 ${processedData.length} 位學生的完整歷史成績。`);
       fetchClassData(selectedCourse);
     } catch (error: any) {
       console.error("CSV Upload Error:", error);
-      alert(error.message);
+      alert("匯入失敗: " + error.message);
     } finally {
       setLoading(false);
       if (event.target) event.target.value = '';

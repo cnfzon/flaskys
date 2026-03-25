@@ -34,7 +34,6 @@ import {
   AreaChart,
 } from 'recharts';
 
-// 將原本的所有邏輯封裝在內部組件中
 function SimulatorContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -148,7 +147,6 @@ function SimulatorContent() {
     <div className="bg-background-light dark:bg-background-dark text-[#121517] min-h-screen flex flex-col font-sans transition-colors duration-300">
       <Header userRole="teacher" />
 
-      {/* 教師控制面板 */}
       <div className="sticky top-0 z-50 bg-white/80 dark:bg-[#1a2027]/80 backdrop-blur-md border-b border-primary/20 shadow-sm px-4 py-3">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -205,7 +203,6 @@ function SimulatorContent() {
           </div>
         </div>
 
-        {/* 數據卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-[#1a222c] p-6 rounded-xl border border-[#e5e7eb] dark:border-gray-700 shadow-sm">
             <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-[10px] font-black tracking-widest"><Trophy className="w-4 h-4" /> Total Points</div>
@@ -225,7 +222,6 @@ function SimulatorContent() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Cumulative Progress 圖表 */}
           <div className="lg:col-span-2 bg-white dark:bg-[#1a222c] border border-[#e5e7eb] dark:border-gray-700 rounded-xl p-8 shadow-sm">
             <h3 className="text-[#121517] dark:text-white text-lg font-black mb-10 uppercase tracking-tight">Cumulative Progress</h3>
             <div className="h-80 w-full min-h-80">
@@ -252,7 +248,6 @@ function SimulatorContent() {
             </div>
           </div>
 
-          {/* Class Rankings */}
           <div className="bg-white dark:bg-[#1a222c] border border-[#e5e7eb] dark:border-gray-700 rounded-xl p-6 shadow-sm flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-[#121517] dark:text-white text-lg font-black uppercase tracking-tight">Class Rankings</h3>

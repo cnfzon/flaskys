@@ -23,7 +23,6 @@ export const getStudentData = async (courseId: string, studentId: string) => {
   
   if (!studentDoc.exists()) return null;
 
-  // 抓取子集合中的所有歷史成績
   const scoresSnapshot = await getDocs(
     query(collection(enrollmentRef, 'scores'), orderBy('createdAt', 'desc'))
   );
@@ -73,7 +72,7 @@ export const updateStudentScore = async (
   const scores = currentData.scores || [];
   const newScores = [...scores, { ...score, timestamp: serverTimestamp() }];
   const totalPoints = newScores.reduce((sum, s) => sum + s.points, 0);
-  const maxPoints = 1000; // Maximum possible points
+  const maxPoints = 1000;
   const finalExamWeight = Math.max(0, ((maxPoints - totalPoints) / maxPoints) * 100);
 
   await updateDoc(studentRef, {
@@ -89,7 +88,7 @@ export const updateStudentTotalPoints = async (
   totalPoints: number
 ): Promise<void> => {
   const studentRef = doc(db, 'students', studentId);
-  const maxPoints = 1000; // Maximum possible points
+  const maxPoints = 1000;
   const finalExamWeight = Math.max(0, ((maxPoints - totalPoints) / maxPoints) * 100);
   await updateDoc(studentRef, {
     totalPoints,
@@ -120,14 +119,12 @@ export const getLeaderboard = async (
 
   const allPoints = sorted.map((s) => s.totalPoints);
 
-  // Get top students
   let topStudents = sorted.slice(0, limit).map((student, index) => ({
     ...student,
     rank: index + 1,
     prValue: calculatePRValue(student.totalPoints, allPoints),
   }));
 
-  // If current student is not in top list, add them
   if (currentStudentId) {
     const currentStudent = sorted.find((s) => s.id === currentStudentId);
     if (currentStudent && !topStudents.find((s) => s.id === currentStudentId)) {
@@ -137,7 +134,6 @@ export const getLeaderboard = async (
         rank: currentRank,
         prValue: calculatePRValue(currentStudent.totalPoints, allPoints),
       });
-      // Sort again to maintain order
       topStudents.sort((a, b) => a.rank - b.rank);
     }
   }
@@ -152,13 +148,12 @@ export const batchUpdateStudentsMatrix = async (data: any[]) => {
     const enrollmentId = `${item.courseId}_${item.studentId}`;
     const enrollmentRef = doc(db, 'enrollments', enrollmentId);
 
-    // 直接覆蓋 totalPoints 與 weeklyHistory，確保資料與 CSV 完全一致
     batch.set(enrollmentRef, {
       courseId: item.courseId,
       studentId: item.studentId,
       name: item.name,
-      totalPoints: item.totalPoints, // 使用 CSV 重新計算的總分
-      weeklyHistory: item.weeklyHistory, // 使用 CSV 完整的歷史陣列
+      totalPoints: item.totalPoints,
+      weeklyHistory: item.weeklyHistory,
       lastUpdated: serverTimestamp()
     }, { merge: true });
   }

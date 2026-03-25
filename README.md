@@ -15,7 +15,7 @@
 
 ---
 
-## 技術棧 (Tech Stack)
+## Tech Stack
 * **Frontend**: Next.js / TypeScript / Tailwind CSS
 * **Backend/Database**: Firebase (Firestore & Auth)
 * **Deployment**: Vercel
@@ -23,7 +23,7 @@
 
 ---
 
-## 移交說明 (Handover Note)
+## Handover Note
 由於開發合約已終止，後續接手者請注意：
 1. **環境變數**：需自行設定 `.env.local` 包含 Firebase API Keys。
 2. **權限移交**：專案管理權限（Vercel/Firebase）需由原開發者進行 Owner 移轉。
@@ -31,5 +31,5 @@
 
 ---
 
-## 作者 (Author)
-**李其睿 (Chih-Ruei Li)** NTUT Electronic Engineering
+## Author
+**Cnfzon**

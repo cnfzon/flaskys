@@ -39,11 +39,6 @@ export const getCoursesByTeacher = async (teacherId: string): Promise<Course[]> 
   });
 };
 
-/**
- * @param teacherId 老師 UID
- * @param courseName 課程名稱
- * @param customCode 老師自定義的邀請碼
- */
 export const createCourse = async (teacherId: string, courseName: string, customCode: string): Promise<string> => {
   const courseRef = collection(db, 'courses');
 

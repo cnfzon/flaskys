@@ -32,17 +32,14 @@ export default function MethodologyPage() {
       <main className="max-w-6xl mx-auto p-12 flex flex-col gap-12">
         <header className="flex flex-col gap-4 text-center md:text-left">
           <div className="text-primary font-black text-base tracking-[0.2em] uppercase">Academic Strategy</div>
-          {/* 放大主標題 */}
           <h1 className="text-5xl md:text-6xl font-black tracking-tighter leading-none">
             Understanding Your <span className="text-primary">Grade Methodology</span>
           </h1>
-          {/* 放大副標題說明文字 */}
           <p className="text-xl md:text-2xl text-[#677683] dark:text-[#9ba8b6] max-w-3xl leading-relaxed">
             The strategic path to passing: The more you earn during the term, the less weight your final exam carries.
           </p>
         </header>
 
-        {/* 成績組成區塊 - 放大內容字體 */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
           <MethodCard 
             icon={<BookOpen className="w-8 h-8" />}
@@ -61,7 +58,6 @@ export default function MethodologyPage() {
           />
         </section>
 
-        {/* 策略說明區塊 - 強化視覺對比與字級 */}
         <section className="bg-white dark:bg-[#1a222c] rounded-[40px] p-12 border border-gray-100 dark:border-gray-700 shadow-2xl flex flex-col gap-12">
           <div className="flex flex-col md:flex-row justify-between items-center gap-10">
             <div className="flex flex-col gap-6 flex-1">
@@ -85,8 +81,6 @@ export default function MethodologyPage() {
               />
             </div>
           </div>
-
-          {/* 圓柱進度條 - 放大標籤字體 */}
           <div className="space-y-6">
             <div className="flex justify-between text-xs md:text-sm font-black uppercase tracking-wider text-gray-500">
               <span className="flex items-center gap-2">
@@ -114,7 +108,6 @@ export default function MethodologyPage() {
             </div>
           </div>
 
-          {/* 公式區塊 - 放大並加強強調 */}
           <div className="bg-gray-50 dark:bg-gray-800/30 p-10 rounded-4xl font-mono text-center border-2 border-dashed border-gray-200 dark:border-gray-700/50 relative group">
             <div className="text-[#677683] dark:text-gray-500 text-base md:text-lg mb-2 uppercase font-black tracking-widest">Grading Formula</div>
             <div className="text-xl md:text-2xl">

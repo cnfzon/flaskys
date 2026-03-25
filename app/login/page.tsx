@@ -9,31 +9,6 @@ import AuthForm from '@/components/auth/AuthForm';
 
 export default function LoginPage() {
   const router = useRouter();
-
-  /*useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        if (!user.email?.endsWith('.org.tw')) {
-          await auth.signOut();
-          alert("請使用 .org.tw 的教育帳號登入");
-          return;
-        }
-
-        const userData = await getUserData(user.uid);
-        if (userData) {
-          if (userData.role === 'teacher') {
-            router.push('/dashboard/teacher');
-          } else {
-            router.push('/dashboard/student');
-          }
-        } else {
-          console.error("找不到該使用者的角色資料");
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [router]);*/
     useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -77,7 +52,6 @@ export default function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen w-full bg-background-light dark:bg-background-dark font-display antialiased text-gray-900 dark:text-white min-h-screen">
-      {/* 登入成功呼叫 */}
       <AuthForm onSuccess={handleSuccess} />
     </div>
   );

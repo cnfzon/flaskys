@@ -101,9 +101,9 @@ export default function StudentDashboard() {
             <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
               <PlusCircle className="w-8 h-8 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold dark:text-white mb-2">尚未加入任何課程</h2>
+            <h2 className="text-2xl font-bold dark:text-white mb-2">尚未加入</h2>
             <button onClick={() => setShowJoinModal(true)} className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-xl shadow-lg transition-all">
-              立即加選課程
+              立即加選
             </button>
           </div>
           {showJoinModal && <JoinCourseModal user={currentUserData} onJoined={() => window.location.reload()} onClose={() => setShowJoinModal(false)} />}
@@ -154,7 +154,6 @@ const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints
     <div className="bg-background-light dark:bg-background-dark text-[#121517] min-h-screen flex flex-col font-sans transition-colors duration-300">
       <Header userRole="student" />
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* 標題與課程名稱 */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <div>
             <h1 className="text-[#121517] dark:text-white text-4xl md:text-5xl font-black tracking-tight">
@@ -172,7 +171,6 @@ const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints
           </div>
         </div>
 
-        {/* 數據卡片區域 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white dark:bg-[#1a2027] p-6 rounded-xl border border-[#e5e7eb] dark:border-[#2d3748] shadow-sm transition-all hover:shadow-md">
             <div className="flex items-center gap-2 mb-2 text-[#677683] uppercase text-xs font-bold tracking-widest">
@@ -199,9 +197,7 @@ const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints
           </div>
         </div>
 
-        {/* 圖表與排行榜 */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 累積進度圖表 */}
           <div className="lg:col-span-2 bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6 shadow-sm">
             <h3 className="text-[#121517] dark:text-white text-lg font-bold mb-6">Cumulative Progress</h3>
             <div className="h-80 w-full">
@@ -229,7 +225,6 @@ const prValue = calculatePRValue(totalPoints, leaderboard.map(s => s.totalPoints
             </div>
           </div>
 
-          {/* 班級排行榜 */}
           <div className="bg-white dark:bg-[#1a2027] border border-[#e5e7eb] dark:border-[#2d3748] rounded-xl p-6 flex flex-col h-full shadow-sm">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-[#121517] dark:text-white text-lg font-bold">Class Rankings</h3>

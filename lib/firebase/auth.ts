@@ -44,7 +44,7 @@ export const registerUser = async (
 
   const userData: Omit<User, 'uid'> = {
     email,
-    role: finalRole, // 白名單校驗
+    role: finalRole,
     displayName: displayName || email.split('@')[0],
     createdAt: new Date(),
   };

@@ -16,7 +16,6 @@ import { parseCSV } from '@/lib/utils/csvParser';
 import Header from '@/components/Header';
 import ManageCoursesModal from '@/components/ManageCoursesModal';
 
-// 引入你修正後的 students 邏輯
 import { 
   getCourseStudents,
   batchUpdateStudentsMatrix 
@@ -33,7 +32,7 @@ import {
   BarChart3,
   Loader2,
   Settings,
-  Eye // 新增圖示用於模擬器
+  Eye
 } from 'lucide-react';
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -51,7 +50,6 @@ export default function TeacherDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('totalPoints');
 
-  // 載入課程資料
   const refreshCourses = async (userId: string) => {
     try {
       const teacherCourses = await getCoursesByTeacher(userId);
@@ -76,7 +74,6 @@ export default function TeacherDashboard() {
     return () => unsubscribe();
   }, [router]);
 
-  // 載入該課程的學生成績
   const fetchClassData = async (courseId: string) => {
     if (!courseId) return;
     setLoading(true);
@@ -94,7 +91,6 @@ export default function TeacherDashboard() {
     if (selectedCourse) fetchClassData(selectedCourse);
   }, [selectedCourse]);
 
-  // 統計邏輯
   const stats = useMemo(() => {
     const total = students.length;
     if (total === 0) return { avg: "0.0", total: 0, risk: 0 };
@@ -139,10 +135,8 @@ export default function TeacherDashboard() {
       const text = await file.text();
       const rawRows = parseCSV(text);
       
-      // 檢查是否有資料 (至少要有標題行與一行資料)
       if (rawRows.length < 2) throw new Error("檔案格式錯誤或內容為空");
 
-      // 1. 正規化標題列，找出固定欄位 (學號、姓名) 的索引
       const rawHeaders = rawRows[0].map(h => h.trim());
       const normalizedHeaders = rawHeaders.map(h => h.toLowerCase().replace(/[\uFEFF\s\-_.]/g, ''));
       
@@ -151,8 +145,6 @@ export default function TeacherDashboard() {
 
       if (idIdx === -1) throw new Error("找不到必要的「學號」或「ID」欄位");
 
-      // 2. 定義成績欄位的起點：姓名 (Name) 之後的所有欄位
-      // 如果找不到姓名欄位，則從學號 (ID) 之後開始
       const dataStartIdx = nameIdx !== -1 ? nameIdx + 1 : idIdx + 1;
       
       const dateColumns: { index: number; label: string }[] = [];
@@ -162,23 +154,19 @@ export default function TeacherDashboard() {
         }
       });
 
-      // 3. 處理學生資料 (從索引 1 開始，跳過標題行)
       const processedData = rawRows.slice(1).map((row) => {
-        // 檢查學號是否存在，避免處理空行
         const studentId = row[idIdx]?.trim();
         if (!studentId) return null;
 
         const history: { date: string; points: number }[] = [];
         let rowTotalPoints = 0;
 
-        // 遍歷所有偵測到的成績欄位
         dateColumns.forEach(col => {
           const rawValue = row[col.index]?.trim();
-          // 如果數值為空 (,,) 或非法字串，則計為 0 分
           const pts = (rawValue && !isNaN(parseFloat(rawValue))) ? parseFloat(rawValue.replace(/,/g, '')) : 0;
           
           history.push({ 
-            date: col.label, // 直接使用標題作為 date
+            date: col.label,
             points: pts 
           });
           rowTotalPoints += pts;
@@ -193,7 +181,6 @@ export default function TeacherDashboard() {
         };
       }).filter(Boolean);
 
-      // 4. 呼叫矩陣式批次更新 (請確保 students.ts 已更新 batchUpdateStudentsMatrix)
       await batchUpdateStudentsMatrix(processedData);
       
       alert(`匯入成功！已同步 ${processedData.length} 位學生的完整歷史成績。`);
@@ -220,7 +207,6 @@ export default function TeacherDashboard() {
       />
 
       <main className="max-w-7xl mx-auto p-6 flex flex-col gap-8">
-        {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-end gap-4">
           <div>
             <h1 className="text-3xl font-black dark:text-white">班級成績管理</h1>
@@ -241,7 +227,6 @@ export default function TeacherDashboard() {
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
 
-            {/* 模擬器跳轉按鈕 */}
             <button 
               onClick={() => {
                 if (!selectedCourse) {
@@ -269,7 +254,6 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* 數據指標卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-[#1a222c] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 text-gray-400 mb-2 font-black uppercase text-[10px] tracking-widest">
@@ -291,7 +275,6 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* 成績分布圖表 */}
         <div className="bg-white dark:bg-[#1a222c] p-8 rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm">
           <div className="flex items-center gap-2 mb-8 text-gray-400">
             <BarChart3 size={18} />
@@ -310,7 +293,6 @@ export default function TeacherDashboard() {
           </div>
         </div>
 
-        {/* 學生名單列表 */}
         <div className="bg-white dark:bg-[#1a222c] rounded-3xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden mb-12">
           <div className="p-6 border-b dark:border-gray-800 flex justify-between items-center bg-gray-50/30 dark:bg-gray-800/20">
             <h3 className="text-xs font-black uppercase tracking-widest dark:text-white">Student Roster</h3>

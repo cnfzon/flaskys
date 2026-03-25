@@ -21,7 +21,6 @@ export default function Header({ title = 'EduTrack Admin', userRole = 'student' 
 
   const isActive = (path: string) => pathname === path;
 
-  // 根據角色定義 Dashboard 的連結路徑
   const dashboardHref = userRole === 'teacher' ? '/dashboard/teacher' : '/dashboard/student';
 
   return (
@@ -45,17 +44,6 @@ export default function Header({ title = 'EduTrack Admin', userRole = 'student' 
           >
             Dashboard
           </Link>
-
-          <Link
-            className={`text-sm font-medium transition-colors ${
-              isActive('/dashboard/calendar') ? 'text-primary font-bold' : 'text-[#121517] dark:text-gray-300 hover:text-primary'
-            }`}
-            href="/dashboard/calendar"
-          >
-            Calendar
-          </Link>
-
-          {/* Grades 已根據您的需求，針對老師與學生全面移除 */}
 
           <Link
             className={`text-sm font-medium transition-colors ${

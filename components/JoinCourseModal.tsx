@@ -24,13 +24,11 @@ export default function JoinCourseModal({ user, onJoined, onClose }: JoinCourseM
   const [loading, setLoading] = useState(false);
 
   const handleJoin = async () => {
-    // 檢查輸入
     if (inviteCode.length !== 6) {
       alert('請輸入正確的 6 位數課號');
       return;
     }
 
-    // 1. 安全檢查：確保 user 資料存在，避免 undefined 報錯
     if (!user || !user.email) {
       alert('用戶資料載入中，請稍後再試');
       return;
@@ -38,12 +36,9 @@ export default function JoinCourseModal({ user, onJoined, onClose }: JoinCourseM
 
     setLoading(true);
     try {
-      // 2. 處理學號格式
-      // 從 email (如 t113360246@...) 提取純數字 (如 113360246)
       const emailPart = user.email.split('@')[0];
       const cleanStudentId = emailPart.startsWith('t') ? emailPart.substring(1) : emailPart;
 
-      // 3. 搜尋課程 ID
       const courseQuery = query(collection(db, 'courses'), where('inviteCode', '==', inviteCode));
       const courseSnap = await getDocs(courseQuery);
 
@@ -55,8 +50,6 @@ export default function JoinCourseModal({ user, onJoined, onClose }: JoinCourseM
 
       const courseId = courseSnap.docs[0].id;
 
-      // 4. 搜尋該課程中屬於該學生的成績單 (使用處理後的 cleanStudentId)
-      // 此處加上檢查確保 cleanStudentId 不是空的
       const enrollQuery = query(
         collection(db, 'enrollments'),
         where('courseId', '==', courseId),
@@ -73,18 +66,16 @@ export default function JoinCourseModal({ user, onJoined, onClose }: JoinCourseM
 
       const enrollmentDoc = enrollSnap.docs[0];
 
-      // 5. 重要：更新綁定 UID
       await updateDoc(doc(db, 'enrollments', enrollmentDoc.id), {
         studentUid: user.uid,
         joinedAt: serverTimestamp()
       });
 
       alert('加選成功！');
-      onJoined(); // 觸發父組件更新
+      onJoined();
       onClose();
     } catch (error: any) {
       console.error("加選發生錯誤:", error);
-      // 如果報錯是 permission-denied，請確認 Firestore Rules 已更新
       alert("系統錯誤：權限不足或網路不穩，請洽管理員");
     } finally {
       setLoading(false);

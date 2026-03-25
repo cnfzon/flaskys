@@ -44,7 +44,6 @@ export default function ManageCoursesModal({ isOpen, onClose, teacherId, courses
         </div>
 
         <div className="flex flex-col gap-3">
-          {/* 課程名稱輸入框 */}
           <input 
             type="text" 
             placeholder="課程名稱 (例如: 電路學 電子二乙)" 
@@ -54,7 +53,6 @@ export default function ManageCoursesModal({ isOpen, onClose, teacherId, courses
           />
           
           <div className="flex gap-2">
-            {/* 邀請碼自定義輸入框 */}
             <input 
               type="text" 
               placeholder="自定義邀請碼 (建議課號：348354)" 

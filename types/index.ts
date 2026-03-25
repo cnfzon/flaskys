@@ -34,7 +34,7 @@ export interface Course {
   code: string;
   semester: string;
   teacherId: string;
-  students: string[]; // Student IDs
+  students: string[];
   createdAt: Date;
 }
 
